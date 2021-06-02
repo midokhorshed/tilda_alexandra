@@ -564,8 +564,6 @@ function t_store_loadProducts(method, recid, opts, slice, relevantsOpts) {
                 }
             }
 
-            t_store_hoverZoom_init(recid);
-
             /* show more button */
             var loadMoreBtn = rec.find('.js-store-load-more-btn');
             /* stop loaders */
@@ -594,7 +592,6 @@ function t_store_loadProducts(method, recid, opts, slice, relevantsOpts) {
                     if (!window.tStoreProductsRequested) {
                         loadMoreBtn.addClass('t-btn_sending');
                         t_store_loadProducts('', recid, opts, obj.nextslice);
-                        t_store_hoverZoom_init(recid);
                     }
                 });
 
@@ -942,7 +939,7 @@ function t_store_process(productsArr, recid, opts, isNextSlice, isRelevantsShow,
         t_store_addProductOptions(recid, product, el_product, opts);
 
         /* Add event handlers for custom styled options */
-        t_store_option_handleOnChange_custom(recid, el_product);
+        t_store_option_handleOnChange_custom(recid, el_product, opts);
 
         t_store_onFuncLoad('t_prod__initProduct', function() {
             t_prod__initProduct(recid, el_product);
@@ -1552,7 +1549,7 @@ function t_store_get_productCard_getWrapperStylesStr(opts) {
 function t_store_get_productCard_img_html(product, opts, curImage) {
     var str = '';
     var mobileNoPaddingClass = opts.hasOriginalAspectRatio && !opts.isHorizOnMob ? 't-store__card__imgwrapper_original-ratio' : '';
-    var wrapperClassStr = 't-store__card__imgwrapper ' + mobileNoPaddingClass + (opts.isFlexCols ? opts.imageRatioClass : '');
+    var wrapperClassStr = 't-store__card__imgwrapper ' + mobileNoPaddingClass + (opts.isFlexCols ? ' ' + opts.imageRatioClass : '');
 
     var wrapperStyle = opts.imageHeight && !opts.isFlexCols ? 'padding-bottom:' + (parseInt(opts.imageHeight, 10) * 100) / (opts.colWidth || 360) + '%;' : '';
 
@@ -1760,6 +1757,7 @@ function t_store_get_productCard_Price_html(product, edition, opts) {
 
 function t_store_get_productCard_onePrice_html(product, edition, opts, type) {
     var value = type === 'current' ? edition.price : edition.priceold;
+    var formattedPrice = t_store__getFormattedPrice(opts, value);
     var priceType = type === 'current' ? 'price' : 'priceold';
 
     var str = '';
@@ -1779,7 +1777,7 @@ function t_store_get_productCard_onePrice_html(product, edition, opts, type) {
 
     str += '<div class="' + priceStylingClass + ' t-store__card__price-item t-name t-name_xs" ' + styleAttr + '>';
     str += (opts.currencySide !== 'r' && currency ? currency : '');
-    str += '<div class="' + jsProdClass + ' t-store__card__price-value notranslate" translate="no" ' + priceFieldAttr + '>' + value + '</div>';
+    str += '<div class="' + jsProdClass + ' t-store__card__price-value notranslate" translate="no" ' + priceFieldAttr + '>' + formattedPrice + '</div>';
     str += (opts.currencySide === 'r' && currency ? currency : '');
 
     if (product.portion > 0) {
@@ -1950,13 +1948,20 @@ function t_store_initPopup(recid, obj_products, options, isRelevantsShow, obj) {
         var el_prodItem = productNode.closest('.js-product');
         var lid_prod = el_prodItem.attr('data-product-gen-uid');
         var productObj = obj_products[lid_prod];
-        popupTrigger.attr('href', productObj.url);
+        if (productObj !== undefined) {
+            popupTrigger.attr('href', productObj.url);
+        }
 
         if (!isRelevantsShow) {
             window.localStorage.setItem('urlBeforePopupOpen', window.location.href);
         }
         popupTrigger.click(function (e) {
             e.preventDefault();
+
+            el_prodItem = $(this).closest('.js-product');
+            lid_prod = el_prodItem.attr('data-product-gen-uid');
+
+            productObj = obj_products[lid_prod];
 
             var ctrlKey = e.ctrlKey;
             var cmdKey = e.metaKey && navigator.platform.indexOf('Mac') !== -1;
@@ -1966,7 +1971,6 @@ function t_store_initPopup(recid, obj_products, options, isRelevantsShow, obj) {
             }
 
             if ((obj.header || obj.footer) && obj.disablepopup) {
-                /*TODO: remove*/
                 location.href = productObj.url;
             } else {
                 isRelevantsShow
@@ -2033,7 +2037,6 @@ function t_store_openProductPopup(recid, opts, productObj, isRelevantsShow, from
         t_slds_updateSlider(recid);
     }
 
-
     if (showRelevants && !isSnippet) {
         var relevantsLabel = {
             cc: 'current_category',
@@ -2049,6 +2052,7 @@ function t_store_openProductPopup(recid, opts, productObj, isRelevantsShow, from
             relevantsSort: relevantsSort,
         });
     }
+
     if (window.lazy === 'y' || $('#allrecords').attr('data-tilda-lazy') === 'yes') {
         t_store_popup_updLazyOnScroll(recid);
     }
@@ -2058,6 +2062,8 @@ function t_store_openProductPopup(recid, opts, productObj, isRelevantsShow, from
         var el_product = $('#rec' + recid + ' .t-popup .js-store-product');
         t_store_addProductQuantity(recid, el_product, productObj, opts);
     }
+
+    t_store_hoverZoom_init(recid);
 
     /* update animation after transition: opacity ease-in-out .3s */
     setTimeout(function() {
@@ -2153,7 +2159,7 @@ function t_store_addProductQuantity(recid, el_product, product, options) {
 
             var btnsWrapper = cardButton.parent();
             btnsWrapper.addClass('t-store__card__btns-wrapper--quantity');
-            if (btnsWrapper.find('a:not([href^="#order"])').length > 0) {
+            if (btnsWrapper.find('a:not([href^="#order"])').length > 0 && btnsWrapper.parent().is('div[class]')) { /* To be safe, need to specify the class of parent, e.g. `.t-store__card__btns-wrapper` */
                 btnsWrapper.wrap('<div></div>');
             }
         } else {
@@ -2342,7 +2348,7 @@ function t_store_drawProdPopup(recid, el_popup, product, options, fromPopup) {
     t_store_initTextAndCharacteristics(el_popup, product);
 
     t_store_addProductOptions(recid, product, el_product, options);
-    t_store_option_handleOnChange_custom(recid, el_product);
+    t_store_option_handleOnChange_custom(recid, el_product, options);
     t_prod__initProduct(recid, el_product);
 
     if (fromPopup) {
@@ -2432,7 +2438,7 @@ function t_store_addProductOptions(recid, product, el_product, options) {
     t_store_product_addOneOptionsControl('modificator', param5, optionsWrapper, options, firstAvailabeEdition, recid);
 
     if (isSnippet) {
-        t_store_option_handleOnChange_custom(recid, el_product);
+        t_store_option_handleOnChange_custom(recid, el_product, options);
     }
 }
 
@@ -4112,6 +4118,7 @@ function t_store_product_initEditions(recid, product, el_product, options) {
     el_product.find('.js-product-edition-option').on('change', function () {
         var edition = t_store_product_detectEditionByControls(el_product, product);
         // pass isChange = true on this onchange event only
+        // It's for switching image on option change
         var isChanged = true;
 
         if (edition) {
@@ -4290,7 +4297,7 @@ function t_store_product_updateEdition(recid, el_product, edition, product, opts
 
     /* change price */
     if (edition.price && parseFloat(edition.price) !== 0) {
-        var formattedPrice = t_store__getFormattedPrice(edition.price);
+        var formattedPrice = t_store__getFormattedPrice(opts, edition.price);
         el_product.find('.js-store-prod-price').show();
         el_product.find('.js-store-prod-price-val').html(formattedPrice);
 
@@ -4321,7 +4328,7 @@ function t_store_product_updateEdition(recid, el_product, edition, product, opts
 
     /* change old price */
     if (edition.priceold && edition.priceold !== '0') {
-        var formattedPriceOld = t_store__getFormattedPrice(edition.priceold);
+        var formattedPriceOld = t_store__getFormattedPrice(opts, edition.priceold);
         el_product.find('.js-store-prod-price-old').show();
         el_product.find('.t-store__card__price_old').show();
         el_product.find('.js-store-prod-price-old-val').html(formattedPriceOld);
@@ -4504,7 +4511,8 @@ function t_store_product_triggerSoldOutMsg(el_product, isSoldOut, opts) {
                 el_buyBtn.hide();
             }
         } else {
-            el_buyBtn.show();
+            el_buyBtn.show(); /* equivalent to calling $.css( "display", "block" ) or $.css( "display", "flex" ) */
+            el_buyBtn.css('display', '');
         }
     }
 }
@@ -4678,7 +4686,7 @@ function t_store_product_getEditionOptionsArr_getValues(prop, editions) {
     return values;
 }
 
-function t_store_product_sortValues(values, type) {
+function t_store_product_sortValues(values, type, filterValues) {
     var result = values || [];
     if (!values.length) return result;
     var testValue = type === 'filter' ? values[0].value.toString() : values[0].toString();
@@ -4701,7 +4709,17 @@ function t_store_product_sortValues(values, type) {
         lengthOrder: lengthOrder
     };
 
-    var isCloth = clothesOrder.indexOf(testValue.trim().toUpperCase()) !== -1;
+    // Check if ALL user values are matched clothesOrder array data
+    var isCloth = true;
+    var checkValues = filterValues ? filterValues : values;
+    checkValues.forEach(function(value) {
+        if (typeof value == 'string') {
+            value = value.trim().toUpperCase();
+            if (clothesOrder.indexOf(value) < 0) {
+                isCloth = false;
+            }
+        }
+    });
 
     if (isCloth) {
         result = result.sort(function(a, b) {
@@ -4835,16 +4853,29 @@ function t_store_getProductFirstImg(product) {
     return '';
 }
 
-function t_store__getFormattedPrice(price) {
-    if (typeof price == 'undefined' || price == 0 || price == '') {
+function t_store__getFormattedPrice(opts, price) {
+    if (typeof price == 'undefined' || price === null || price == 0 || price == '') {
         return '';
     }
     t_store_onFuncLoad('t_prod__cleanPrice', function() {
         price = t_prod__cleanPrice(price);
         price = price.toString();
     });
-    var showDecPart = typeof window.tcart != 'undefined' && typeof window.tcart['currency_dec'] != 'undefined' && window.tcart['currency_dec'] == '00';
-    var hasDefinedSeparator = typeof window.tcart != 'undefined' && typeof window.tcart['currency_sep'] != 'undefined' && window.tcart['currency_sep'] == '.';
+
+    var showDecPart = false;
+    var hasDefinedSeparator = false;
+
+    if (opts.currencyDecimal) {
+        showDecPart = opts.currencyDecimal === '00';
+    } else if (typeof window.tcart != 'undefined' && typeof window.tcart['currency_dec'] != 'undefined') {
+        showDecPart = window.tcart['currency_dec'] === '00';
+    }
+
+    if (opts.currencySeparator) {
+        hasDefinedSeparator = opts.currencySeparator === '.';
+    } else if (typeof window.tcart != 'undefined' && typeof window.tcart['currency_sep'] != 'undefined') {
+        hasDefinedSeparator = window.tcart['currency_sep'] === '.';
+    }
 
     /* always show decimial part, if it was defined in settings */
     if (showDecPart) {
@@ -5000,11 +5031,11 @@ function t_store_filters_initResetBtn(recid, opts) {
         /* price fields — to default values */
         /* min */
         var el_min = el_rec.find('.js-store-filter-pricemin');
-        var minPrice = t_store__getFormattedPrice(el_min.attr('data-min-val'));
+        var minPrice = t_store__getFormattedPrice(opts, el_min.attr('data-min-val'));
         el_min.val(minPrice);
         /* max */
         var el_max = el_rec.find('.js-store-filter-pricemax');
-        var maxPrice = t_store__getFormattedPrice(el_max.attr('data-max-val'));
+        var maxPrice = t_store__getFormattedPrice(opts, el_max.attr('data-max-val'));
         el_max.val(maxPrice);
         /* checkboxes */
         el_rec.find('.js-store-filter-onlyavail, .js-store-filter-opt-chb').prop('checked', false);
@@ -5540,15 +5571,15 @@ function t_store_filters_opts_getHtml_range(f, opts) {
         '        <input class="t-store__filter__input js-store-filter-pricemin" type="text" name="price:min" data-min-val="' +
         f.min +
         '" value="' +
-        t_store__getFormattedPrice(f.min) +
+        t_store__getFormattedPrice(opts, f.min) +
         '">';
     str +=
         '&nbsp;—&nbsp;<input class="t-store__filter__input js-store-filter-pricemax" type="text" name="price:max" data-max-val="' +
         f.max +
         '" value="' +
-        t_store__getFormattedPrice(f.max) +
+        t_store__getFormattedPrice(opts, f.max) +
         '">';
-        str += '&nbsp;<button class="t-store__filter__btn js-store-filter-price-btn">OK</button>';
+        str += '<button class="t-store__filter__btn js-store-filter-price-btn">OK</button>';
     str += '    </div>';
     str += '</div>';
     return str;
@@ -5932,7 +5963,10 @@ function t_store_filters_handleOnChange_priceRange(recid, opts, el_rec) {
         }
 
         el_min_range.val(resultVal);
-        el_min_text.val(resultVal);
+        var formattedPrice = resultVal
+            ? t_store__getFormattedPrice(opts, resultVal.toString())
+            : resultVal;
+        el_min_text.val(formattedPrice);
         t_store_filters_calcPriceOuterWidth(el_rec, 'start', min, max, resultVal);
 
         if (minTimer) {
@@ -5961,7 +5995,10 @@ function t_store_filters_handleOnChange_priceRange(recid, opts, el_rec) {
         }
 
         el_max_range.val(resultVal);
-        el_max_text.val(resultVal);
+        var formattedPrice = resultVal
+            ? t_store__getFormattedPrice(opts, resultVal.toString())
+            : resultVal;
+        el_max_text.val(formattedPrice);
         t_store_filters_calcPriceOuterWidth(el_rec, 'end', min, max, resultVal);
 
         if (maxTimer) {
@@ -6337,13 +6374,13 @@ function t_store_filters_opts_checkedValues_hideOnClick(recid, opts) {
             el_control.trigger('click');
         } else if (el_control.hasClass('js-store-filter-pricemin')) {
             /* change control for range, min */
-            defVal = t_store__getFormattedPrice(el_control.attr('data-min-val'));
+            defVal = t_store__getFormattedPrice(opts, el_control.attr('data-min-val'));
             el_control.val(defVal);
             el_control.trigger('tstoreMinPriceTriggerReset');
             t_store_updateUrlWithParams('delete', 'price:min', null, recid);
         } else if (el_control.hasClass('js-store-filter-pricemax')) {
             /* change control for range, max */
-            defVal = t_store__getFormattedPrice(el_control.attr('data-max-val'));
+            defVal = t_store__getFormattedPrice(opts, el_control.attr('data-max-val'));
             el_control.val(defVal);
             el_control.trigger('tstoreMaxPriceTriggerReset');
             t_store_updateUrlWithParams('delete', 'price:max', null, recid);
@@ -6503,7 +6540,7 @@ function t_store_oneProduct_fill(recid, data, opts) {
     t_store_oneProduct_fill_data(recid, data, el_prod, opts);
 
     /* Add events */
-    t_store_option_handleOnChange_custom(recid, el_prod);
+    t_store_option_handleOnChange_custom(recid, el_prod, opts);
 }
 
 function t_store_oneProduct_successMsg_show(recid, data, opts) {
@@ -6726,7 +6763,7 @@ function t_store_paramsToObj(recid, opts) {
     for (var rec in sortByRec) {
         var newSort = sortByRec[rec].sort;
         var newQuantity = sortByRec[rec].quantity;
-        var isSortChanged = false;
+        // var isSortChanged = false;
 
         if (!newSort && !newQuantity) {
             continue;
@@ -6740,7 +6777,6 @@ function t_store_paramsToObj(recid, opts) {
             }
 
             result[rec].sort = newSort;
-            isSortChanged = true;
         }
 
         if (result[rec] && result[rec].quantity === 'y' && opts.previewmode) {
@@ -6752,11 +6788,6 @@ function t_store_paramsToObj(recid, opts) {
             }
 
             result[rec].quantity = 'y';
-            isSortChanged = true;
-        }
-
-        if (isSortChanged) {
-            t_store_paramsToObj_updateUrl(result);
         }
     }
 
@@ -6947,6 +6978,13 @@ function t_store_filters_opts_sort(opts, recid) {
 
         if (type === 'checkbox') {
             var el_controls = $(this).find('.t-checkbox__control');
+            // Pass all filter values to customSort
+            var filterValues = [];
+            el_controls.each(function(i, control) {
+                var value = $(control).find('.js-store-filter-opt-chb').attr('data-filter-value');
+                filterValues.push(value);
+            });
+
             var sorted = el_controls.sort(function(a, b) {
                 var first = $(a).find('.js-store-filter-opt-chb');
                 var second = $(b).find('.js-store-filter-opt-chb');
@@ -6961,7 +6999,7 @@ function t_store_filters_opts_sort(opts, recid) {
                     // Apply default sort before custom sort
                     var sorted = [valueA, valueB].sort();
                     // Don't pass second argument 'filter' as function expects object in that case
-                    sorted = t_store_product_sortValues(sorted, 'string');
+                    sorted = t_store_product_sortValues(sorted, 'string', filterValues);
                     return sorted.indexOf(valueA) - sorted.indexOf(valueB);
                 }
 
@@ -6979,6 +7017,13 @@ function t_store_filters_opts_sort(opts, recid) {
             $(this).append(sorted);
         } else if (type === 'selectbox') {
             var el_controls = $(this).find('.t-store__filter__custom-sel');
+            // Pass all filter values to customSort
+            var filterValues = [];
+            el_controls.each(function(i, control) {
+                var value = $(this).attr('data-filter-value');
+                filterValues.push(value);
+            });
+
             var sorted = el_controls.sort(function(a,b) {
                 if ($(a).hasClass('active') && $(b).hasClass('active')) {
                     return 1;
@@ -6988,7 +7033,7 @@ function t_store_filters_opts_sort(opts, recid) {
                     var valueA = $(a).attr('data-filter-value');
                     var valueB = $(b).attr('data-filter-value');
                     var sorted = [valueA, valueB].sort();
-                    sorted = t_store_product_sortValues(sorted, 'string');
+                    sorted = t_store_product_sortValues(sorted, 'string', filterValues);
                     return sorted.indexOf(valueA) - sorted.indexOf(valueB);
                 }
 
@@ -7025,7 +7070,7 @@ function t_store_filters_render_selected(opts, recid) {
                 if (filterKey === 'price:min') {
                     el_control = rec.find('[name="price:min"]');
                     el_control.data('previousMin', parseInt(filterValue, 10));
-                    el_control.attr('value', t_store__getFormattedPrice(filterValue));
+                    el_control.attr('value', t_store__getFormattedPrice(opts, filterValue));
                     filterLabel = '> ' + filterValue;
                     t_store_filters_opts_chosenVal_add(recid, filterValue, el_control, filterLabel);
 
@@ -7035,7 +7080,7 @@ function t_store_filters_render_selected(opts, recid) {
                 } else if (filterKey === 'price:max') {
                     el_control = rec.find('[name="price:max"]');
                     el_control.data('previousMax', parseInt(filterValue, 10));
-                    el_control.attr('value', t_store__getFormattedPrice(filterValue));
+                    el_control.attr('value', t_store__getFormattedPrice(opts, filterValue));
                     filterLabel = '< ' + filterValue;
                     t_store_filters_opts_chosenVal_add(recid, filterValue, el_control, filterLabel);
 
@@ -7151,7 +7196,7 @@ function t_store_option_checkIfCustom(curOption) {
     return false;
 }
 
-function t_store_option_handleOnChange_custom(recid, element) {
+function t_store_option_handleOnChange_custom(recid, element, opts) {
     // Disable all events before add new ones, because this function is called in different places e.g. at popup open
     var el_select_custom = element.find('.t-product__option-variants_custom');
 
@@ -7174,6 +7219,12 @@ function t_store_option_handleOnChange_custom(recid, element) {
                 el_input.prop('checked', false);
                 var el_upd_input = el_custom_ui.find('.t-product__option-input[value="' + value + '"]');
                 el_upd_input.prop('checked', true).click();
+                setTimeout(function() {
+                    t_store_unifyCardsHeights(recid, opts);
+                    if (opts.verticalAlignButtons) {
+                        t_store_verticalAlignButtons(recid, opts);
+                    }
+                }, 50);
             }
         }
     });
@@ -7195,6 +7246,12 @@ function t_store_option_handleOnChange_custom(recid, element) {
                 el_select_hidden.val(value).change();
                 el_option.removeClass('t-product__option-item_active');
                 $(this).parent().addClass('t-product__option-item_active');
+                setTimeout(function() {
+                    t_store_unifyCardsHeights(recid, opts);
+                    if (opts.verticalAlignButtons) {
+                        t_store_verticalAlignButtons(recid, opts);
+                    }
+                }, 50);
             });
         });
     }
@@ -7617,12 +7674,14 @@ function t_store_onFuncLoad(funcName, okFunc, time) {
     if (typeof window[funcName] === 'function') {
         okFunc();
     } else {
+        var startTime = Date.now();
         setTimeout(function checkFuncExist() {
+            var currentTime = Date.now();
             if (typeof window[funcName] === 'function') {
                 okFunc();
                 return;
             }
-            if (document.readyState === 'complete' && typeof window[funcName] !== 'function') {
+            if (document.readyState === 'complete' && currentTime - startTime > 5000 && typeof window[funcName] !== 'function') {
                 throw new Error(funcName + ' is undefined');
             }
             setTimeout(checkFuncExist, time || 100);
