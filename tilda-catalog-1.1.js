@@ -61,8 +61,18 @@ function t_store_init(recid, opts) {
         }
     }
 
+    /* Set proper slice if it has been set on URL */
+    var slice = 1;
+    if (customUrlParams[recid] && customUrlParams[recid].page) {
+        // Check if page is in URLParams
+        // Data could be stored as array :(
+        slice = Array.isArray(customUrlParams[recid].page)
+            ? customUrlParams[recid].page.join('')
+            : customUrlParams[recid].page;
+    }
+
     /* draw all products grid */
-    t_store_loadProducts('', recid, opts);
+    t_store_loadProducts('', recid, opts, slice);
     t_store_mobileHoriz_checkBtnVisibility(recid, opts);
 
     if (opts.isHorizOnMob) {
@@ -74,6 +84,7 @@ function t_store_init(recid, opts) {
         t_store_unifyCardsHeights(recid, opts);
         t_store_moveSearhSort(recid, opts);
         t_store_loadMoreBtn_display(recid);
+        t_store_pagination_display(recid);
     }));
 
     rec.find('.t-store').bind('displayChanged', function () {
@@ -569,7 +580,7 @@ function t_store_loadProducts(method, recid, opts, slice, relevantsOpts) {
             /* stop loaders */
             loadMoreBtn.removeClass('t-btn_sending');
 
-            /* pagination */
+            /* load more */
             if (obj.nextslice) {
                 var isMobileOneRow = gridContainer.has('t-store__grid-cont_mobile-one-row');
 
@@ -617,6 +628,11 @@ function t_store_loadProducts(method, recid, opts, slice, relevantsOpts) {
             } else if (!showRelevants) {
                 loadMoreBtn.hide();
                 gridContainer.off('scroll');
+            }
+
+            /* add Pagination */
+            if (opts.showPagination && opts.showPagination === 'on') {
+                t_store_pagination_draw(recid, opts, slice, obj.nextslice, obj.total);
             }
 
             if (window.isMobile) {
@@ -1038,6 +1054,273 @@ function t_store_process_appendAndShowProducts(rec, gridContainer, productsHtml)
         rec.data('already-loaded-first-products', true);
     }
 }
+
+function t_store_pagination_draw(recid, opts, curPage, nextSlice, total) {
+    // Config
+    curPage = !curPage ? 1 : Number(curPage);
+    var PAGES_DRAW_COUNT = 5;
+    var pageSize = opts.size;
+    var totalPages = Math.floor(total/pageSize);
+    var pagingRange = t_store_pagination_getPagingRange(curPage, 1, totalPages, PAGES_DRAW_COUNT);
+
+    // Draw
+    var rec = $('#rec' + recid);
+    var gridContainer = rec.find('.js-store-grid-cont');
+    var loadmore = rec.find('.t-store__load-more-btn-wrap');
+    var pagination = rec.find('.t-store__pagination');
+
+    if (totalPages <= 1) {
+        pagination.remove();
+        return;
+    }
+
+    var html = t_store_pagination_getHtml(recid, opts, curPage, pagingRange, totalPages);
+    // Append properly
+    if (pagination.length) {
+        pagination.empty();
+        pagination.append(html);
+    } else {
+        if (loadmore.length) {
+            loadmore.after(html);
+        } else {
+            gridContainer.after(html);
+        }
+    }
+
+    var pagination = rec.find('.t-store__pagination');
+    pagination.attr('data-active-page', curPage);
+    pagination.attr('data-total-pages', totalPages);
+
+    // Events
+    t_store_pagination_addEvents(recid, opts);
+    // Toggle display
+    t_store_pagination_display(recid);
+}
+
+function t_store_pagination_getHtml(recid, opts, curPage, pagingRange, totalPages) {
+    var rec = $('#rec' + recid);
+    var pagination = rec.find('.t-store__pagination');
+    var str = '';
+
+    var addStyles = t_store_pagination_getButtonStyles(opts);
+    var iconsColor = opts.typo.descr || addStyles.bgColor || '#000000';
+    var separator = '...';
+    var prev = '<?xml version="1.0" encoding="UTF-8"?>\
+    <svg class="t-store__pagination__arrow t-store__pagination__arrow_prev" width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">\
+        <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">\
+            <path d="M5.85355339,3.14644661 C6.02711974,3.32001296 6.04640489,3.58943736 5.91140884,3.7843055 L5.85355339,3.85355339 L1.707,8 L15.5,8 C15.7761424,8 16,8.22385763 16,8.5 C16,8.74545989 15.8231248,8.94960837 15.5898756,8.99194433 L15.5,9 L1.707,9 L5.85355339,13.1464466 C6.02711974,13.320013 6.04640489,13.5894374 5.91140884,13.7843055 L5.85355339,13.8535534 C5.67998704,14.0271197 5.41056264,14.0464049 5.2156945,13.9114088 L5.14644661,13.8535534 L0.146446609,8.85355339 L0.108961015,8.81166225 L0.108961015,8.81166225 L0.0667474273,8.74976515 L0.0667474273,8.74976515 L0.0376105602,8.6905951 L0.0376105602,8.6905951 L0.0166108213,8.62813914 L0.0166108213,8.62813914 L0.00544806672,8.57406693 L0.00544806672,8.57406693 L0.00182199094,8.54281541 L0.00182199094,8.54281541 L0,8.48946265 C0.000554364655,8.46826702 0.00233820308,8.44709424 0.00546187104,8.42608223 L0,8.5 L0.00282096186,8.4465724 L0.00282096186,8.4465724 L0.0166082551,8.37185423 L0.0166082551,8.37185423 L0.0377922373,8.30896344 L0.0377922373,8.30896344 L0.0885911588,8.2156945 L0.0885911588,8.2156945 L0.134588748,8.15871357 L0.134588748,8.15871357 L5.14644661,3.14644661 C5.34170876,2.95118446 5.65829124,2.95118446 5.85355339,3.14644661 Z" fill="' + iconsColor + '" fill-rule="nonzero"></path>\
+        </g>\
+    </svg>';
+    var next = '<?xml version="1.0" encoding="UTF-8"?>\
+    <svg class="t-store__pagination__arrow t-store__pagination__arrow_next" width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">\
+        <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">\
+            <path d="M10.1464466,3.14644661 C9.97288026,3.32001296 9.95359511,3.58943736 10.0885912,3.7843055 L10.1464466,3.85355339 L14.293,8 L0.5,8 C0.223857625,8 0,8.22385763 0,8.5 C0,8.74545989 0.176875161,8.94960837 0.410124368,8.99194433 L0.5,9 L14.293,9 L10.1464466,13.1464466 C9.97288026,13.320013 9.95359511,13.5894374 10.0885912,13.7843055 L10.1464466,13.8535534 C10.320013,14.0271197 10.5894374,14.0464049 10.7843055,13.9114088 L10.8535534,13.8535534 L15.8535534,8.85355339 L15.891039,8.81166225 L15.891039,8.81166225 L15.9332526,8.74976515 L15.9332526,8.74976515 L15.9623894,8.6905951 L15.9623894,8.6905951 L15.9833892,8.62813914 L15.9833892,8.62813914 L15.9945519,8.57406693 L15.9945519,8.57406693 L16,8.5 L16,8.5 L15.997179,8.4465724 L15.997179,8.4465724 L15.9833917,8.37185423 L15.9833917,8.37185423 L15.9622078,8.30896344 L15.9622078,8.30896344 L15.9114088,8.2156945 L15.9114088,8.2156945 L15.8654113,8.15871357 L15.8654113,8.15871357 L10.8535534,3.14644661 C10.6582912,2.95118446 10.3417088,2.95118446 10.1464466,3.14644661 Z" fill="' + iconsColor + '" fill-rule="nonzero"></path>\
+        </g>\
+    </svg>';
+
+    var prevClass = t_store_pagination_getClass(opts, 't-store__pagination__item', 'prev');
+    var nextClass = t_store_pagination_getClass(opts, 't-store__pagination__item', 'next');
+    var separatorClass = t_store_pagination_getClass(opts, 't-store__pagination__item', 'separator');
+    var btnStyle = opts.typo.descr;
+
+    if (addStyles.bgColor) {
+        btnStyle += ' border-color: ' + addStyles.bgColor + ';';
+    }
+
+    if (addStyles.borderRadius) {
+        btnStyle += ' border-radius: ' + addStyles.borderRadius + ';';
+    }
+
+    if (!pagination.length) {
+        str += '<div class="t-store__pagination" data-active-page="' + curPage + '" data-total-pages="' + totalPages + '">';
+    }
+
+    if (curPage !== 1) {
+        str += '<div class="' + prevClass + '" style="' + btnStyle + '" data-control-type="prev">' + prev + '</div>';
+    }
+
+    var last = pagingRange.length - 1;
+    for (var i = 0; i < pagingRange.length; i++) {
+        var value = pagingRange[i];
+        var isActive = value === curPage;
+
+        var pageClass = t_store_pagination_getClass(opts, 't-store__pagination__item', 'page', isActive);
+
+        // the first item
+        if (i === 0 && value !== 1) {
+            str += '<div class="' + pageClass + '" style="' + btnStyle + '" data-page-num="1">1</div>';
+        }
+        // separator
+        if (i === 0 && value > 2) {
+            str += '<div class="' + separatorClass + '" style="' + btnStyle + '">' + separator + '</div>';
+        }
+        // actual values from paging range
+        str += '<div class="' + pageClass + '" style="' + btnStyle + '" data-page-num="' + value + '">' + value + '</div>';
+        // separator
+        if (i === last && pagingRange[last] < totalPages - 1) {
+            str += '<div class="' + separatorClass + '" style="' + btnStyle + '">' + separator + '</div>';
+        }
+        // last item
+        if (i === last && pagingRange[last] !== totalPages) {
+            str += '<div class="' + pageClass + '" style="' + btnStyle + '" data-page-num="' + totalPages + '">' + totalPages + '</div>';
+        }
+    }
+
+    if (curPage < totalPages) {
+        str += '<div class="' + nextClass + '" style="' + btnStyle + '" data-control-type="next">' + next + '</div>';
+    }
+
+    if (!pagination.length) {
+        str += '</div>';
+    }
+
+    return str;
+}
+
+function t_store_pagination_display(recid) {
+    var rec = $('#rec' + recid);
+    var gridContainer = rec.find('.js-store-grid-cont');
+    var pagination = rec.find('.t-store__pagination');
+    if (gridContainer.length && pagination.length) {
+        var isMobileOneRow = gridContainer.hasClass('t-store__grid-cont_mobile-one-row') && $(window).width() < 960;
+        if (isMobileOneRow) {
+            pagination.hide();
+        } else {
+            pagination.show();
+        }
+    }
+}
+
+function t_store_pagination_getClass(opts, className, type, isActive) {
+    var sizeClass = opts.btnSize === 'sm' ? 'js-pagination-item_sm ' : '';
+    var result = type === 'separator' ? className : 'js-pagination-item ' + sizeClass + className;
+
+    if (isActive) {
+        result += ' ' + className + '_active';
+    }
+
+    // type modificator
+    result += ' ' + className + '_' + type;
+    // common part
+    result += ' t-descr t-descr_xxs';
+
+    return result;
+}
+
+function t_store_pagination_getButtonStyles(opts) {
+    var addStyles = opts.btn1_style.split(';');
+    var bgColor = null;
+    var borderRadius = null;
+    var result = {};
+
+    addStyles.forEach(function(style) {
+        if (style.indexOf('background-color') === 0) {
+            bgColor = style.replace('background-color:', '').trim();
+        } else if (style.indexOf('border-radius') === 0) {
+            borderRadius = style.replace('border-radius:', '').trim();
+        }
+    })
+
+    if (bgColor) {
+        result.bgColor = bgColor;
+        var rgb = t_store_hexToRgb(bgColor);
+
+        if (rgb) {
+            var rgba = rgb;
+            rgba.push(1);
+            result.bgColorRgba = rgba;
+        }
+    }
+    if (borderRadius) {
+        result.borderRadius = borderRadius;
+    }
+
+    return result;
+}
+
+function t_store_pagination_addEvents(recid, opts) {
+    var rec = $('#rec' + recid);
+    var buttons = rec.find('.js-pagination-item');
+    var pagination = rec.find('.t-store__pagination');
+
+    var addStyles = t_store_pagination_getButtonStyles(opts);
+    var hoverColor = 'rgba(0, 0, 0, 0.05)';
+    if (addStyles.bgColorRgba) {
+        var opacity = 0.05;
+        addStyles.bgColorRgba[addStyles.bgColorRgba.length - 1] = opacity;
+        hoverColor = 'rgba(' + addStyles.bgColorRgba.join(', ') + ')';
+    }
+
+    buttons.mouseenter(function() {
+        $(this).css('background-color', hoverColor);
+    }).mouseleave(function() {
+        $(this).css('background-color', 'unset');
+    } );
+
+    buttons.on('click', function() {
+        var container = $(this).closest('.t-store__pagination');
+        var pageNum = Number($(this).attr('data-page-num'));
+        var activePage = Number(container.attr('data-active-page'));
+        var maxPage = Number(container.attr('data-total-pages'));
+        var isNext = $(this).attr('data-control-type') === 'next';
+        var isPrev = $(this).attr('data-control-type') === 'prev';
+        var slice = pageNum;
+
+        if (!isNaN(pageNum) && pageNum == activePage) {
+            return;
+        }
+
+        if (isNext) {
+            slice = activePage + 1 <= maxPage ? activePage + 1 : maxPage;
+        } else if (isPrev) {
+            slice = activePage - 1 >= 1 ? activePage - 1 : 1;
+        } else if (!isNaN(pageNum)) {
+            slice = pageNum;
+        }
+
+        if (isNext || isPrev || !isNaN(pageNum)) {
+            rec.find('.js-store-grid-cont').html('');
+            t_store_showLoadersForProductsList(recid, opts);
+            t_store_loadProducts('', recid, opts, slice);
+
+            pagination.attr('data-active-page', slice);
+            pagination.attr('data-total-pages', maxPage);
+            // Update URL
+            t_store_pagination_updateUrl(recid, opts, slice);
+        }
+    })
+}
+
+function t_store_pagination_updateUrl(recid, opts, slice) {
+    var params = window.tStoreCustomUrlParams || {};
+    if (!params[recid]) {
+        params[recid] = {};
+    }
+
+    params[recid].page = slice;
+    if (slice == 1) {
+        delete params[recid].page;
+    }
+
+    window.tStoreCustomUrlParams = params;
+    t_store_paramsToObj_updateUrl(params);
+}
+
+function t_store_pagination_getPagingRange(current, min, total, length) {
+    // Return paging range according to length
+    var result = [];
+    if (length > total) length = total;
+
+    let start = current - Math.floor(length / 2);
+    start = Math.max(start, min);
+    start = Math.min(start, min + total - length);
+
+    for (var i = 0; i < length; i++) {
+        result.push(start + i);
+    }
+
+    return result;
+  }
 
 function t_store_mobileHoriz_checkBtnVisibility(recid, opts) {
     t_store_mobileHoriz_hideLoadBtn(recid, opts);
@@ -1935,6 +2218,11 @@ function t_store_get_soldOutMsg_html() {
 }
 
 function t_store_initPopup(recid, obj_products, options, isRelevantsShow, obj) {
+    if (!isRelevantsShow) {
+        window.localStorage.setItem('urlBeforePopupOpen', window.location.href);
+    }
+
+    /* TODO: этот перебор избыточен и может быть упрощён до селекторов jQuery */
     for (var productKey in obj_products) {
         var rec = $('#rec' + recid);
         var productNode = isRelevantsShow
@@ -1942,9 +2230,9 @@ function t_store_initPopup(recid, obj_products, options, isRelevantsShow, obj) {
             : rec.find('[data-product-gen-uid=' + productKey + ']');
 
         var popupTrigger = productNode.find('[href^="#prodpopup"]');
-        popupTrigger.unbind();
+        popupTrigger.unbind(); //?
 
-        /* replace #prodpopup to absolute link */
+        /* Replace #prodpopup to absolute link */
         var el_prodItem = productNode.closest('.js-product');
         var lid_prod = el_prodItem.attr('data-product-gen-uid');
         var productObj = obj_products[lid_prod];
@@ -1952,9 +2240,6 @@ function t_store_initPopup(recid, obj_products, options, isRelevantsShow, obj) {
             popupTrigger.attr('href', productObj.url);
         }
 
-        if (!isRelevantsShow) {
-            window.localStorage.setItem('urlBeforePopupOpen', window.location.href);
-        }
         popupTrigger.click(function (e) {
             e.preventDefault();
 
@@ -1978,15 +2263,15 @@ function t_store_initPopup(recid, obj_products, options, isRelevantsShow, obj) {
                     : t_store_openProductPopup(recid, options, productObj, isRelevantsShow, false, false);
             }
         });
-
-        if (options.isPublishedPage) {
-            setTimeout(function () {
-                t_store_checkUrl(options, recid);
-            }, 300);
-        }
-
-        t_store_copyTypographyFromLeadToPopup(recid, options);
     }
+
+    if (options.isPublishedPage) {
+        setTimeout(function () {
+            t_store_checkUrl(options, recid);
+        }, 300);
+    }
+
+    t_store_copyTypographyFromLeadToPopup(recid, options);
 }
 
 function t_store_openProductPopup(recid, opts, productObj, isRelevantsShow, fromHistory, fromPopup) {
@@ -2082,7 +2367,8 @@ function t_store_addProductQuantity(recid, el_product, product, options) {
 
     if (isNaN(quantity)) {
         if (product.editions !== undefined) {
-            quantity = parseInt(product.editions[0].quantity, 10);
+            var firstAvailabeEdition = t_store_product_getFirstAvailableEditionData(product.editions);
+            quantity = parseInt(firstAvailabeEdition.quantity, 10);
         }
     }
 
@@ -2982,12 +3268,7 @@ function t_store_drawProdPopup_drawGallery(recid, el_popup, product, options) {
 
         if (hasBullets) {
             if (hasThumbs && options.sliderthumbsside == 'l') {
-                var maxThumbsCount = t_store_prodPopup_gallery_calcMaxThumbsCount(
-                    columnSizeForMainImage,
-                    galleryImageAspectRatio,
-                    thumbsSize,
-                    marginBetweenThumbs
-                );
+                var maxThumbsCount = t_store_prodPopup_gallery_calcMaxThumbsCount(columnSizeForMainImage, galleryImageAspectRatio, thumbsSize, marginBetweenThumbs);
 
                 if (key <= maxThumbsCount - 1) {
                     if (key <= maxThumbsCount - 2 || key === galleryArr.length - 1) {
@@ -3097,6 +3378,11 @@ function t_store_galleryVideoClearFrame(recid) {
 function t_store_prodPopup_updateGalleryThumbs(recid, el_popup, product, options) {
     var rec = $('#rec' + recid);
     var galleryArr;
+
+    var hasThumbs = options.slider_opts.controls === 'thumbs' || options.slider_opts.controls === 'arrowsthumbs';
+    if (hasThumbs || options.sliderthumbsside !== 'l') {
+        return;
+    }
 
     if (!product.gallery) {
         return;
@@ -5413,7 +5699,6 @@ function t_store_filters_opts_getHtml_customSelect(f, opts) {
 
     if (f.values) {
         f.values = t_store_product_sortValues(f.values, 'filter');
-        // t_store_product_getEditionOptionsArr_sortValues
         // Draw expand/collapse button or not (t951)
         isExpandable = opts.sidebar && f.values.length > 10;
 
@@ -6801,7 +7086,9 @@ function t_store_paramsToObj_updateUrl(paramsObj) {
     if (window.location.hash) {
         newUrl += window.location.hash;
     }
-    window.history.replaceState(null, null, newUrl);
+    try {
+        window.history.replaceState(null, null, newUrl);
+    } catch (e) { /* */ }
 }
 
 function t_store_paramsToObj_getDefaultSort(recid, sort) {
@@ -6852,7 +7139,7 @@ function t_store_customURLParamsToString(params) {
         if (param !== 'otherParams') {
             for (var filter in rec) {
                 try {
-                    var values = Array.isArray(rec[filter]) ? rec[filter].join('%2B') : rec[filter]; // + analogue // + symbol has been already used for spaces
+                    var values = Array.isArray(rec[filter]) ? rec[filter].join('%2B') : rec[filter].toString(); // + analogue // + symbol has been already used for spaces
 
                     values = values.replace(/%26amp/g, '&amp;');
                     values = values.replace(/\s/gi, '+');
