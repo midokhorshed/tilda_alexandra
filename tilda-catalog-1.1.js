@@ -5601,6 +5601,7 @@ function t_store_filters_send(recid, opts) {
     opts.sort = sort;
     t_store_filters_prodsNumber_update(el_rec, opts);
     t_store_showLoadersForProductsList(recid, opts);
+    t_store_pagination_updateUrl(recid, opts, 1);
     t_store_loadProducts('', recid, opts);
 }
 
