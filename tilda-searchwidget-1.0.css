@@ -259,6 +259,9 @@
     cursor: pointer;
     font-weight: 400;
 }
+.t-search-widget__pagination-dots {
+    cursor: auto;
+}
 .t-search-widget__pagination-active {
     border-radius: 50%;
     background-color: #F2F1F1;
