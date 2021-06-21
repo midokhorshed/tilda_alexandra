@@ -73,19 +73,18 @@ $(document).ready(function () {
     }
 
     function tsearchwidget_drawSearchBar() {   
+        $('input.t-search-widget__input').val('');
         $('.t-search-widget__overlay').addClass('t-search-widget__overlay_opened');
         $('.t-search-widget__close-icon').on('click', function() {
             tsearchwidget_hideOverlay(); 
         });
         $('.t-search-widget__clear-icon').on('click', function() {
-            
             tsearchwidget_clearInput(); 
             $(this).hide();
         });
 
         $('.t-search-widget__overlay').on('click', function(e) {
             var target = $(e.target);
-            
             if(!target.is(".t-search-widget__header, .t-search-widget__popup") && !target.parents().is(".t-search-widget__header, .t-search-widget__popup")) {
                 tsearchwidget_hideOverlay(); 
             }
@@ -103,6 +102,9 @@ $(document).ready(function () {
                 timerID = setTimeout(function () {
                     tsearchwidget__request(1);
                 }, 300);
+            }
+            if (currentInput.val().length === 0) {
+                tsearchwidget_clearInput(); 
             }
         });
         
@@ -144,7 +146,6 @@ $(document).ready(function () {
 
     function tsearchwidget__displayPopup(sResults, initUp) {
         initUp = initUp || false;
-
         $('.t-search-widget__query-result').remove();
         $('.t-search-widget__resultwrapper').remove();
         
@@ -218,24 +219,6 @@ $(document).ready(function () {
             if (sResults['pagin'] > 1) {
                 str += '<hr style="opacity: 0.2; margin-top: 20px; margin-bottom: 20px">';
                 str += '<div class="t-search-widget__pagination">';
-                if (currentPage > 1) {
-                    str += '<div class="t-search-widget__pagination-button t-search-widget__pagination-prev">' +
-                    '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="14" viewBox="0 0 8 14" fill="none"><path d="M7 1L1 7L7 13" stroke="black"/></svg>' +
-                    '</div>';
-                }
-                for (var page = 1; page <= sResults['pagin']; page++) {
-                    if (page == currentPage) {
-                        str += '<span class="t-text t-search-widget__pagination-item t-search-widget__pagination-active" page="' + page + '">' + page + '</span>';
-                        continue;
-                    }
-                    str += '<span class="t-text t-search-widget__pagination-item" page="' + page + '">' + page + '</span>';
-                }
-                if (currentPage < sResults['pagin']) {
-                    str += '<div class="t-search-widget__pagination-button t-search-widget__pagination-next">' +
-                    '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="14" viewBox="0 0 8 14" fill="none"><path d="M1 1L7 7L1 13" stroke="black"/></svg>' +
-                    '</div>';
-                }
-                str += '</div>';
             }
 
         } else if (sResults['total'] == 0 && !initUp) {
@@ -255,11 +238,77 @@ $(document).ready(function () {
 
         var productwrapper = $('.t-search-widget__productwrapper');
         productwrapper.append(productStr);
-
+        
         $('body').addClass('body-fix');
-
+        
         $('.t-site-search-popup__preloader').show();		
     }
+    
+    function tsearchwidget__appendPagination(page, sResults) {
+        $('.t-search-widget__pagination').append(tsearchwidget__createPagination(page, sResults['pagin']));
+    }
+
+
+    function tsearchwidget__createPagination(currentPage, totalcount) {
+        var str = "";
+        if (currentPage > 1) {
+            str += '<div class="t-search-widget__pagination-button t-search-widget__pagination-prev">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="14" viewBox="0 0 8 14" fill="none"><path d="M7 1L1 7L7 13" stroke="black"/></svg>' +
+            '</div>';
+        }
+
+        if (totalcount <= 6) {
+            for (i = 1; i <= totalcount; i++) {
+                str += addPage(i, currentPage);
+            }
+        }
+        else {
+            str += addPage("1", currentPage);
+            if (currentPage > 3) {
+                str += '<span class="t-text t-search-widget__pagination-item t-search-widget__pagination-dots">...</span>';
+            }
+            if (currentPage == totalcount) {
+                str += addPage(currentPage - 2, currentPage);
+            }
+            if (currentPage > 2) {
+                str += addPage(currentPage - 1, currentPage);
+            }
+            if (currentPage != 1 && currentPage != totalcount) {
+                str += addPage(currentPage, currentPage);
+            }
+            if (currentPage < totalcount - 1) {
+                str += addPage(currentPage + 1, currentPage);
+            }
+            if (currentPage == 1) {
+                str += addPage(currentPage + 2, currentPage);
+            }
+            if (currentPage < totalcount - 2) {
+                str += '<span class="t-text t-search-widget__pagination-item t-search-widget__pagination-dots">...</span>';
+            }
+            if (totalcount > 1) {
+                str += addPage(totalcount, currentPage);
+            }
+        }
+        
+        if (currentPage < totalcount) {
+            str += '<div class="t-search-widget__pagination-button t-search-widget__pagination-next">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="14" viewBox="0 0 8 14" fill="none"><path d="M1 1L7 7L1 13" stroke="black"/></svg>' +
+            '</div>';
+        }
+        return str;
+    }
+    function addPage(number, currentPage) {
+        var str = '';
+        str += '<span class="t-text t-search-widget__pagination-item';
+        if (number == currentPage) {
+            str += ' t-search-widget__pagination-active';
+        }
+        str += '" page="' + number + '">' + number + '</span>';
+        return str;
+    }
+
+
+
 
     function tsearchwidget__request(action, page, query) {
         page = parseInt(page, 10) || 1;
@@ -284,10 +333,10 @@ $(document).ready(function () {
             url: 'https://search.tildacdn.com/search/?p=' + project + '&q=' + encodeURIComponent(query) + '&page=' + page,
             success: function (data) {
                 tsearchwidget__displayPopup(data);
+                tsearchwidget__appendPagination(parseInt(currentPage), data);
             },
             beforeSend: function () {
                 currentInput.parent('div').children('.t-site-search-close').hide();
-                tsearchwidget__displayPopup({}, true);
                 $('.t-search-widget__clear-icon').hide();
                 $('.t-search-widget__loading').show();
                 currentPage = currentPage || 1;
