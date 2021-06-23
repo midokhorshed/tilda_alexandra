@@ -125,6 +125,7 @@ $(document).ready(function () {
     }
     function tsearchwidget_clearInput() {
         tsearchwidget_clearURL();
+        $('body').removeClass('body-fix');
         $('.t-search-widget__input').val('');
         $('.t-search-widget__popup').remove();
         $('.t-search-widget__query-result').remove();
@@ -133,6 +134,7 @@ $(document).ready(function () {
     }
     function tsearchwidget_hideOverlay() {
         tsearchwidget_clearURL();
+        $('body').removeClass('body-fix');
         $('.t-search-widget__overlay').removeClass('t-search-widget__overlay_opened');
         tsearchwidget_clearInput();
     }
@@ -200,7 +202,6 @@ $(document).ready(function () {
         $('.t-search-widget__resultwrapper').empty();
         $('.t-search-widget__productwrapper').remove();
         $('.t-search-widget__loadmore-btn-wrap').remove();
-        // $('.t-search-widget__pagination').remove();
 
         if (!$('.t-search-widget__popup').length) {
             var html =
