@@ -374,6 +374,7 @@ $(document).ready(function () {
     function tsearchwidget__request(page, query, addPage) {
         page = parseInt(page, 10) || 1;
         var project = $('#allrecords').attr('data-tilda-project-id');
+        var num = $('.t985').attr('data-search-showby') || 10;
 
         if (typeof currentInput !== 'undefined' && typeof query === 'undefined') {
             query = currentInput.val();
@@ -388,7 +389,7 @@ $(document).ready(function () {
         xhr = '';
         $.ajax({
             type: 'GET',
-            url: 'https://search.tildacdn.com/search/?p=' + project + '&q=' + encodeURIComponent(query) + '&page=' + page,
+            url: 'https://search.tildacdn.com/search/?p=' + project + '&q=' + encodeURIComponent(query) + '&page=' + page + '&num=' + num,
             success: function (data) {
                 if (!addPage) {
                     tsearchwidget__drawPopup(data, false, page);
