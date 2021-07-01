@@ -118,7 +118,32 @@ function t_store_history_pushState(state, title, url) {
 
 // eslint-disable-next-line no-unused-vars
 function t_store_productInit(recid, options, product) {
-    // TODO: Move functions from snipper later
+    var el_product = $('#rec' + recid + ' .t-store__product-snippet.js-store-product');
+
+    t_store_initTextAndCharacteristics(el_product, product);
+    if (options.tabs && options.tabs !== '') {
+        t_store_tabs_init(recid, options, product, el_product);
+    }
+}
+
+function t_store_tabs_init(recid, options, product, el_product, el_popup) {
+    var tabs = el_product.find('.js-store-tabs');
+    var el_container = el_popup ? el_popup : el_product;
+    tabs.empty();
+
+    $.when(t_store_loadProductTabs(recid, options, product.uid))
+        .done(function () {
+            var tabsData = window.tStoreTabsList ? window.tStoreTabsList[product.uid] : null;
+
+            if (!tabsData || !tabsData.length) {
+                return;
+            } else {
+                t_store_drawProdPopup_drawTabs(recid, options, tabsData);
+                t_store_tabs_handleOnChange(recid, options, el_product, tabsData);
+                t_store_initTextAndCharacteristics(el_container, product);
+            }
+        }
+    );
 }
 
 function t_store_initRouting() {
@@ -631,7 +656,7 @@ function t_store_loadProducts(method, recid, opts, slice, relevantsOpts) {
             }
 
             /* add Pagination */
-            if (opts.showPagination && opts.showPagination === 'on') {
+            if (opts.showPagination && opts.showPagination === 'on' && !showRelevants) {
                 t_store_pagination_draw(recid, opts, slice, obj.nextslice, obj.total);
             }
 
@@ -821,6 +846,47 @@ function t_store_loadFilters(recid, opts) {
     });
 }
 
+function t_store_loadProductTabs(recid, opts, curProdUid) {
+    var c = Date.now();
+    var storepartuid = opts.storepart;
+
+    var dataObj = {
+        storepartuid: storepartuid,
+        recid: recid,
+        productuid: curProdUid,
+        c: c,
+    };
+
+    return $.ajax({
+        type: 'GET',
+        url: 'https://store.tildacdn.com/api/getproducttabs/',
+        data: dataObj,
+        dataType: 'text',
+        success: function (data) {
+            // eslint-disable-next-line no-console
+            if (typeof data === 'string') {
+                data = JSON.parse(data);
+            }
+
+            if (typeof data !== 'object') {
+                console.log("Wrong tabs data format for product uid = " + curProdUid + ' in storepart = ' + opts.storepart);
+                return;
+            }
+
+            if (!window.tStoreTabsList) {
+                window.tStoreTabsList = {};
+            }
+
+            window.tStoreTabsList[data.productuid] = data.tabs;
+        },
+        error: function () {
+            // eslint-disable-next-line no-console
+            console.log("Can't get tabs for product uid = " + curProdUid + ' in storepart = ' + opts.storepart);
+        },
+        timeout: 1000 * 25,
+    });
+}
+
 function t_store_parse_jsonData(data) {
     try {
         var obj = jQuery.parseJSON(data);
@@ -889,6 +955,32 @@ function t_store_process(productsArr, recid, opts, isNextSlice, isRelevantsShow,
             .replace('[[isCycled]]', opts.slider_opts.cycle ? 'true' : 'false');
     }
 
+    // Store product min and max prices
+    $.each(productsArr, function (i, product) {
+        var minPrice = null;
+        var maxPrice = null;
+
+        product.editions.forEach(function(edition) {
+            if (edition.price && edition.price !== '') {
+                var price = t_prod__cleanPrice(edition.price);
+
+                if (minPrice === null) {
+                    minPrice = price;
+                } else {
+                    minPrice = Math.min(minPrice, price);
+                }
+
+                if (maxPrice === null) {
+                    maxPrice = price;
+                } else {
+                    maxPrice = Math.max(maxPrice, price);
+                }
+            }
+        });
+
+        product.minPrice = minPrice;
+        product.maxPrice = maxPrice;
+    });
 
     $.each(productsArr, function (i, product) {
         if ((!isRelevantsShow && (!isT973)) || (isRelevantsShow && !opts.relevants_slider)) {
@@ -902,9 +994,6 @@ function t_store_process(productsArr, recid, opts, isNextSlice, isRelevantsShow,
 
         countProducts++;
     });
-
-
-
 
     if ((isRelevantsShow && opts.relevants_slider && (productsArr.length > blocksInRowForRelevant || $(window).width() <= 960)) || (!isRelevantsShow && isT973)) {
         var arrowsTplEl = rec.find('.js-store-tpl-slider-arrows');
@@ -1060,7 +1149,7 @@ function t_store_pagination_draw(recid, opts, curPage, nextSlice, total) {
     curPage = !curPage ? 1 : Number(curPage);
     var PAGES_DRAW_COUNT = 5;
     var pageSize = opts.size;
-    var totalPages = Math.floor(total/pageSize);
+    var totalPages = Math.ceil(total/pageSize);
     var pagingRange = t_store_pagination_getPagingRange(curPage, 1, totalPages, PAGES_DRAW_COUNT);
 
     // Draw
@@ -1258,12 +1347,13 @@ function t_store_pagination_addEvents(recid, opts) {
     } );
 
     buttons.on('click', function() {
-        var container = $(this).closest('.t-store__pagination');
-        var pageNum = Number($(this).attr('data-page-num'));
+        var button = $(this);
+        var container = button.closest('.t-store__pagination');
+        var pageNum = Number(button.attr('data-page-num'));
         var activePage = Number(container.attr('data-active-page'));
         var maxPage = Number(container.attr('data-total-pages'));
-        var isNext = $(this).attr('data-control-type') === 'next';
-        var isPrev = $(this).attr('data-control-type') === 'prev';
+        var isNext = button.attr('data-control-type') === 'next';
+        var isPrev = button.attr('data-control-type') === 'prev';
         var slice = pageNum;
 
         if (!isNaN(pageNum) && pageNum == activePage) {
@@ -1287,6 +1377,13 @@ function t_store_pagination_addEvents(recid, opts) {
             pagination.attr('data-total-pages', maxPage);
             // Update URL
             t_store_pagination_updateUrl(recid, opts, slice);
+
+            var el_store = button.closest('.t-store');
+            if (el_store.length) {
+                $('html, body').animate({
+                    scrollTop: el_store.offset().top - 50
+                }, 50);
+            }
         }
     })
 }
@@ -1311,7 +1408,7 @@ function t_store_pagination_getPagingRange(current, min, total, length) {
     var result = [];
     if (length > total) length = total;
 
-    let start = current - Math.floor(length / 2);
+    var start = current - Math.floor(length / 2);
     start = Math.max(start, min);
     start = Math.min(start, min + total - length);
 
@@ -1428,6 +1525,7 @@ function t_store_get_productPopup_html(recid, opts) {
     str += '                        ' + t_store_get_productPopup_text_html();
     str += '                    </div>';
     str += '                </div>';
+
     if (showRelevants) {
         str += '                <div class="t-store__relevants__container">';
         str += '                    <div class="t-store__relevants__title-wrapper">';
@@ -1933,7 +2031,7 @@ function t_store_get_productCard_imgElHover_html(product, opts, curtImg) {
 function t_store_get_productCard_getImgStyles(opts) {
     if (opts.prodCard.borderRadius) {
         var size = parseInt(opts.prodCard.borderRadius, 10);
-        return 'border-radius:' + size + 'px ' + size + 'px 0px 0px; top: -2px;';
+        return 'border-radius:' + size + 'px ' + size + 'px 0px 0px; ' + (size > 0 ? 'top: -2px;' : '');
     }
     return '';
 }
@@ -2022,6 +2120,8 @@ function t_store_get_productCard_txt_html(product, edition, opts) {
 function t_store_get_productCard_Price_html(product, edition, opts) {
     var str = '';
     var modifier = '';
+    var formattedPriceRange = t_store__getFormattedPriceRange(opts, product);
+
     if (Object.prototype.hasOwnProperty.call(opts.price, 'position')) {
         if (opts.price.position == 'at') {
             modifier = ' t-store__card__price-wrapper_above-title';
@@ -2032,7 +2132,10 @@ function t_store_get_productCard_Price_html(product, edition, opts) {
 
     str += '<div class="js-store-price-wrapper t-store__card__price-wrapper' + modifier + '">';
     str += '    ' + t_store_get_productCard_onePrice_html(product, edition, opts, 'current');
-    str += '    ' + t_store_get_productCard_onePrice_html(product, edition, opts, 'old');
+    // Don't draw old price whenever price range is shown
+    if (!formattedPriceRange) {
+        str += '    ' + t_store_get_productCard_onePrice_html(product, edition, opts, 'old');
+    }
     str += '    ' + (parseInt(edition.quantity, 10) === 0 ? t_store_get_soldOutMsg_html() : '');
     str += '</div>';
     return str;
@@ -2041,9 +2144,11 @@ function t_store_get_productCard_Price_html(product, edition, opts) {
 function t_store_get_productCard_onePrice_html(product, edition, opts, type) {
     var value = type === 'current' ? edition.price : edition.priceold;
     var formattedPrice = t_store__getFormattedPrice(opts, value);
+    var formattedPriceRange = t_store__getFormattedPriceRange(opts, product);
+    formattedPrice = formattedPriceRange ? formattedPriceRange : formattedPrice;
     var priceType = type === 'current' ? 'price' : 'priceold';
-
     var str = '';
+
     var priceStylingClass = type === 'current' ? 't-store__card__price' : 't-store__card__price_old';
     var styleAttr = '';
     var styleStr = '';
@@ -2057,6 +2162,9 @@ function t_store_get_productCard_onePrice_html(product, edition, opts, type) {
 
     var currency = opts.currencyTxt ? '<div class="t-store__card__price-currency">' + opts.currencyTxt + '</div>' : '';
     var jsProdClass = type === 'current' ? 'js-product-price js-store-prod-price-val' : 'js-store-prod-price-old-val';
+    if (formattedPriceRange) {
+        jsProdClass += ' js-store-prod-price-range-val';
+    }
 
     str += '<div class="' + priceStylingClass + ' t-store__card__price-item t-name t-name_xs" ' + styleAttr + '>';
     str += (opts.currencySide !== 'r' && currency ? currency : '');
@@ -2283,7 +2391,6 @@ function t_store_openProductPopup(recid, opts, productObj, isRelevantsShow, from
     var rec = $('#rec' + recid);
     var el_popup = rec.find('.t-popup');
     t_store_drawProdPopup(recid, el_popup, productObj, opts, fromPopup);
-
     t_store_showPopup(recid, fromHistory, fromPopup);
 
     /* read title for analytics, when we add data to popup */
@@ -2632,10 +2739,15 @@ function t_store_drawProdPopup(recid, el_popup, product, options, fromPopup) {
     }
 
     t_store_initTextAndCharacteristics(el_popup, product);
+    // Draw tabs
+    if (options.tabs && options.tabs !== '') {
+        t_store_tabs_init(recid, options, product, el_product, el_popup);
+    }
 
     t_store_addProductOptions(recid, product, el_product, options);
     t_store_option_handleOnChange_custom(recid, el_product, options);
     t_prod__initProduct(recid, el_product);
+
 
     if (fromPopup) {
         $(window).unbind('resize', window.t_store_prodPopup_updateGalleryThumbsEvent);
@@ -2647,11 +2759,33 @@ function t_store_drawProdPopup(recid, el_popup, product, options, fromPopup) {
 }
 
 function t_store_initTextAndCharacteristics(el_popup, product) {
-    var prodTxt = product.text ? product.text : product.descr ? product.descr : '';
-    if (product.characteristics && product.characteristics.length > 0) {
-        prodTxt += prodTxt.length > 0 ? '</br></br>' : '';
+    var el_prodTxt = el_popup.find('.js-store-prod-text');
+    el_prodTxt.empty().hide();
+
+    var tabsData = window.tStoreTabsList ? window.tStoreTabsList[product.uid] : null;
+    var isCharcs = product.characteristics && product.characteristics.length > 0;
+
+    var isDescriptionDrawn = true;
+    var isCharsDrawn = isCharcs;
+    // If any tab contains description or product characteristics, hide it
+    if (tabsData) {
+        for (var tab in tabsData) {
+            if (tabsData[tab].type === 'text') {
+                isDescriptionDrawn = false;
+            } else if (tabsData[tab].type === 'chars') {
+                isCharsDrawn = false;
+            }
+        }
+    }
+
+    var prodTxt = '<div class="js-store-prod-all-text"' + (!isDescriptionDrawn ? ' style="display: none;"' : '') + '>';
+    prodTxt += product.text ? product.text : product.descr ? product.descr : '';
+    prodTxt += '</div>';
+
+    var charcsTxt = '<div class="js-store-prod-all-charcs" style="margin-top: 20px;' + (!isCharsDrawn ? ' display: none;' : '') + '">';
+    if (isCharcs) {
         product.characteristics.forEach(function (ch) {
-            prodTxt += '<p class="js-store-prod-charcs">' + ch.title + ': ' + ch.value + '</p>';
+            charcsTxt += '<p class="js-store-prod-charcs">' + ch.title + ': ' + ch.value + '</p>';
         });
     }
 
@@ -2665,9 +2799,12 @@ function t_store_initTextAndCharacteristics(el_popup, product) {
     /* draw characteristics */
 
     /* add 'dimensions' & 'weight' always */
-    prodTxt += '<p class="js-store-prod-dimensions"></p>';
-    prodTxt += '<p class="js-store-prod-weight"></p>';
-    el_popup.find('.js-store-prod-text').html(prodTxt).show();
+    charcsTxt += '<p class="js-store-prod-dimensions"></p>';
+    charcsTxt += '<p class="js-store-prod-weight"></p>';
+    charcsTxt += '</div>';
+    el_prodTxt.append(prodTxt);
+    el_prodTxt.append(charcsTxt);
+    el_prodTxt.show();
 
     /* add dimension if != 0 */
     if (pack_label && pack_x && pack_y && pack_z) {
@@ -3220,6 +3357,77 @@ function t_store_removeSizesFromStylesLine(styleStr) {
     return styleStr;
 }
 
+function t_store_drawProdPopup_drawTabs(recid, opts, tabsData) {
+    var isSnippet = $.contains($('#allrecords')[0], $('.t-store__product-snippet')[0]);
+    var el_rec = $('#rec' + recid);
+    var el_wrapper = isSnippet
+        ? el_rec.find('.js-product .t-container')
+        : el_rec.find('.t-popup .js-product');
+
+    var str = '';
+    var tabDesign = opts.tabs;
+    var isAccordion = tabDesign === 'accordion';
+    var activeTab = !isAccordion && tabsData[0] ? tabsData[0] : null;
+
+    str += '<div class="js-store-tabs t-store__tabs" data-tab-design="' + tabDesign +'"' + (activeTab ? ' data-active-tab="' + activeTab.title + '"' : '') + '>';
+
+    str += '    <div class="t-store__tabs__list t-store__tabs__list_' + tabDesign + '">';
+    tabsData.forEach(function(tab, i) {
+        var content = t_store_drawProdPopup_getSingleTabData(tab, el_wrapper);
+
+        str += '        <div class="t-store__tabs__item' + (i === 0 && !isAccordion ? ' t-store__tabs__item_active' : ' ') + ' t-store__tabs__item_' + tabDesign + ' js-store-tab" data-tab-title="' + t_store_escapeQuote(tab.title) + '" data-tab-type="' + tab.type + '">';
+
+        str += '            <div class="t-store__tabs__button js-store-tab-button">';
+        str += '                <span class="t-store__tabs__item-title t-name t-name_xs">';
+        str +=                      tab.title;
+        str += '                </span>';
+        if (isAccordion) {
+        str += '                <div class="t-store__tabs__close">';
+        str += '                <svg class="t-store__tabs__close-icon" width="24px" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">';
+        str += '                    <g stroke="none" stroke-width="1px" fill="none" fill-rule="evenodd" stroke-linecap="square">';
+        str += '                    <g transform="translate(1.000000, 1.000000)" stroke="#222222">';
+        str += '                        <path d="M0,11 L22,11"></path>';
+        str += '                        <path d="M11,0 L11,22"></path>';
+        str += '                    </g>';
+        str += '                    </g>';
+        str += '                </svg>';
+        str += '                </div>';
+        }
+
+        str += '            </div>';
+        if (isAccordion) {
+        str += '            <div class="t-store__tabs__content t-descr t-descr_xxs" style="display: none;">';
+        str +=                     content;
+        str += '            </div>';
+        }
+        str += '        </div>';
+    });
+    str += '    </div>';
+
+    if (!isAccordion) {
+        var activeContent = t_store_drawProdPopup_getSingleTabData(activeTab, el_wrapper);
+        str += '    <div class="t-store__tabs__content t-descr t-descr_xxs">';
+        str +=         activeContent;
+        str += '    </div>';
+    }
+    str += '</div>';
+    el_wrapper.append(str);
+}
+
+function t_store_drawProdPopup_getSingleTabData(tab, el_wrapper) {
+    if (!tab || typeof tab !== 'object' ) {
+        return null;
+    }
+
+    if (tab.type === 'info' || tab.type === 'template') {
+        return tab.data;
+    } else if (tab.type === 'text') {
+        return el_wrapper.find('.js-store-prod-all-text').html();
+    } else if (tab.type === 'chars') {
+        return el_wrapper.find('.js-store-prod-all-charcs').html();
+    }
+}
+
 function t_store_drawProdPopup_drawGallery(recid, el_popup, product, options) {
     var rec = $('#rec' + recid);
     var galleryArr;
@@ -3727,6 +3935,22 @@ function t_store_dict(msg) {
         KK: 'Барлық',
         IT: 'Tutti',
         LV: 'Visi',
+    };
+
+    dict['from'] = {
+        EN: 'from',
+        RU: 'от',
+        FR: 'de',
+        DE: 'von',
+        ES: 'de',
+        PT: 'de',
+        JA: 'から',
+        ZH: '从',
+        UK: 'від',
+        PL: 'od',
+        KK: 'бастап',
+        IT: 'da',
+        LV: 'no',
     };
 
     dict['emptypartmsg'] = {
@@ -4503,6 +4727,23 @@ function t_store_product_selectAvailableEdition(recid, product, el_product, opts
         var el_select = t_store_product_getEditionSelectEl(el_product, curOption);
 
         el_select.find('.js-product-edition-option-variants').val(value);
+
+        // Change custom options if available
+        var el_custom_opts = el_select.find('.t-product__option-variants_custom');
+        if (el_custom_opts.length) {
+            var el_items = el_custom_opts.find('.t-product__option-item');
+            el_items.each(function() {
+                var el_input = $(this).find('.t-product__option-input');
+
+                if (el_input.val() === value) {
+                    el_input.prop('checked', true).click();
+                    $(this).addClass('t-product__option-item_active');
+                } else {
+                    el_input.prop('checked', false);
+                    $(this).removeClass('t-product__option-item_active');
+                }
+            });
+        }
     });
 
     t_store_product_updateEdition(recid, el_product, edition, product, opts, isChanged);
@@ -4584,6 +4825,8 @@ function t_store_product_updateEdition(recid, el_product, edition, product, opts
     /* change price */
     if (edition.price && parseFloat(edition.price) !== 0) {
         var formattedPrice = t_store__getFormattedPrice(opts, edition.price);
+        var formattedPriceRange = t_store__getFormattedPriceRange(opts, product);
+        formattedPrice = formattedPriceRange ? formattedPriceRange : formattedPrice;
         el_product.find('.js-store-prod-price').show();
         el_product.find('.js-store-prod-price-val').html(formattedPrice);
 
@@ -5186,6 +5429,35 @@ function t_store__getFormattedPrice(opts, price) {
     price = price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
     return price;
+}
+
+function t_store__getFormattedPriceRange(opts, product) {
+    // Important: return null if user selected to draw product variants UI in product card
+    if (opts.prodCard.showOpts
+        || !opts.price.priceRange
+        || opts.price.priceRange == ''
+        || !product.hasOwnProperty('minPrice')
+        || !product.hasOwnProperty('maxPrice')) {
+        return null;
+    }
+
+    var minPrice = product.minPrice;
+    var maxPrice = product.maxPrice;
+
+    if (minPrice !== null && maxPrice !== null && minPrice !== maxPrice) {
+        minPrice = t_store__getFormattedPrice(opts, minPrice);
+        maxPrice = t_store__getFormattedPrice(opts, maxPrice);
+        var priceRangeDesign = opts.price.priceRange;
+
+        if (priceRangeDesign === 'range') {
+            return minPrice + '&mdash;' + maxPrice;
+        } else if (priceRangeDesign === 'from') {
+            return t_store_dict('from') + ' ' + minPrice;
+        }
+
+    } else {
+        return null;
+    }
 }
 
 function t_store_filters_init(recid, opts, data) {
@@ -6422,7 +6694,7 @@ function t_store_filters_handleOnChange_checkbox(recid, opts, el_rec) {
 
 function t_store_filters_handleOnChange_selectbox(recid, opts, el_rec) {
     el_rec.find('.js-store-filter-custom-select').on('click', function (e) {
-        var isMobileSort = $(e.target).hasClass('t-store__filter__item_sort-mobile');
+        var isMobileSort = $(e.target).hasClass('t-store__filter__item_sort-mobile') || $(this).hasClass('t-store__filter__item_sort-mobile');
 
         var text = $(this).attr('data-select-val');
         var label = $(this).text();
@@ -6933,7 +7205,12 @@ function t_store_getColumnWidth(size) {
 }
 
 function t_store_paramsToObj(recid, opts) {
-    var paramsString = decodeURI(window.location.search);
+    var paramsString;
+    try {
+        paramsString = decodeURI(window.location.search);
+    } catch(e) {
+        paramsString = window.location.search;
+    }
 
     var result = {
         otherParams: []
@@ -7140,8 +7417,9 @@ function t_store_customURLParamsToString(params) {
         if (param !== 'otherParams') {
             for (var filter in rec) {
                 try {
-                    var values = Array.isArray(rec[filter]) ? rec[filter].join('%2B') : rec[filter].toString(); // + analogue // + symbol has been already used for spaces
-
+                    var values = Array.isArray(rec[filter]) ? rec[filter].join('[[PLUS]]') : rec[filter].toString(); // + analogue // + symbol has been already used for spaces
+                    values = values.replace(/%/g, '%25');
+                    values = values.replace(/\[\[PLUS\]\]/g, '%2B');
                     values = values.replace(/%26amp/g, '&amp;');
                     values = values.replace(/\s/gi, '+');
                     result += !result.length ? '?' : '&';
@@ -7167,7 +7445,7 @@ function t_store_customURLParamsToString(params) {
     if (!result.length) {
         return window.location.origin + window.location.pathname;
     } else {
-        return decodeURI(result);
+        return result;
     }
 }
 
@@ -7482,6 +7760,60 @@ function t_store_option_checkIfCustom(curOption) {
     }
 
     return false;
+}
+
+function t_store_tabs_handleOnChange(recid, opts, el_product, tabsData) {
+    var isSnippet = $.contains($('#allrecords')[0], $('.t-store__product-snippet')[0]);
+    var el_rec = $('#rec' + recid);
+    var el_wrapper = isSnippet
+        ? el_rec.find('.js-product .t-container')
+        : el_rec.find('.t-popup .js-product');
+    var tabs = el_product.find('.js-store-tabs');
+    var design = tabs.attr('data-tab-design');
+    var isAccordion = design === 'accordion';
+
+    var buttons = el_product.find('.js-store-tab-button');
+    buttons.off('click');
+    buttons.on('click', function() {
+        var title = $(this).closest('.t-store__tabs__item').attr('data-tab-title');
+
+        if (isAccordion) {
+            var el_tab = $(this).parent();
+            el_tab.find('.t-store__tabs__content').slideToggle(300);
+            el_tab.toggleClass('t-store__tabs__item_active');
+
+            el_product.find('.t-store__tabs__item').each(function() {
+                var curTitle = $(this).attr('data-tab-title');
+                var isActive = $(this).hasClass('t-store__tabs__item_active');
+
+                if (curTitle !== title && isActive) {
+                    $(this).find('.t-store__tabs__content').slideToggle(300);
+                    $(this).toggleClass('t-store__tabs__item_active');
+                }
+            });
+        } else {
+            var tab = null;
+
+            for (var key in tabsData) {
+                var curTab = tabsData[key];
+                if (title === curTab.title) {
+                    tab = curTab;
+                    break;
+                }
+            }
+
+            var content = t_store_drawProdPopup_getSingleTabData(tab, el_wrapper);
+
+            if (content) {
+                tabs.find('.t-store__tabs__content').html(content);
+            }
+
+            el_product.find('.t-store__tabs__item').removeClass('t-store__tabs__item_active');
+            $(this).closest('.t-store__tabs__item').addClass('t-store__tabs__item_active');
+        }
+
+        tabs.attr('data-active-tab', title);
+    });
 }
 
 function t_store_option_handleOnChange_custom(recid, element, opts) {
