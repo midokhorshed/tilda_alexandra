@@ -2759,6 +2759,8 @@ function t_store_drawProdPopup(recid, el_popup, product, options, fromPopup) {
 }
 
 function t_store_initTextAndCharacteristics(el_popup, product) {
+    // If function is called for snippet, el_popup is el_product
+    // Find better name for param is advised :)
     var el_prodTxt = el_popup.find('.js-store-prod-text');
     el_prodTxt.empty().hide();
 
@@ -5433,7 +5435,8 @@ function t_store__getFormattedPrice(opts, price) {
 
 function t_store__getFormattedPriceRange(opts, product) {
     // Important: return null if user selected to draw product variants UI in product card
-    if (opts.prodCard.showOpts
+    if (!opts.hasOwnProperty('prodCard')
+        || opts.prodCard.showOpts
         || !opts.price.priceRange
         || opts.price.priceRange == ''
         || !product.hasOwnProperty('minPrice')
