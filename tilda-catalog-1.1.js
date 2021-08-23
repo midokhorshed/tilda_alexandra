@@ -116,19 +116,20 @@ function t_store_history_pushState(state, title, url) {
     }
 }
 
+/* Used in the snippet only */
 // eslint-disable-next-line no-unused-vars
 function t_store_productInit(recid, options, product) {
     var el_product = $('#rec' + recid + ' .t-store__product-snippet.js-store-product');
 
-    t_store_initTextAndCharacteristics(el_product, product);
     if (options.tabs && options.tabs !== '') {
-        t_store_tabs_init(recid, options, product, el_product);
+        t_store_tabs_initSnippet(recid, options, el_product, product);
+    } else {
+        t_store_initTextAndCharacteristics(el_product, product);
     }
 }
 
 function t_store_tabs_init(recid, options, product, el_product, el_popup) {
-    var tabs = el_product.find('.js-store-tabs');
-    var el_container = el_popup ? el_popup : el_product;
+    var tabs = el_product.find('.t-store__tabs');
     tabs.empty();
 
     $.when(t_store_loadProductTabs(recid, options, product.uid))
@@ -136,14 +137,86 @@ function t_store_tabs_init(recid, options, product, el_product, el_popup) {
             var tabsData = window.tStoreTabsList ? window.tStoreTabsList[product.uid] : null;
 
             if (!tabsData || !tabsData.length) {
+                t_store_initTextAndCharacteristics(el_popup, product);
                 return;
             } else {
                 t_store_drawProdPopup_drawTabs(recid, options, tabsData);
-                t_store_tabs_handleOnChange(recid, options, el_product, tabsData);
-                t_store_initTextAndCharacteristics(el_container, product);
+                t_store_tabs_handleOnChange(recid, el_product);
+                t_store_initTextAndCharacteristics(el_popup, product);
             }
         }
     );
+}
+
+function t_store_tabs_initSnippet(recid, opts, el_product, product) {
+    var el_tabs = el_product.find('.t-store__tabs');
+    if (!el_tabs.length) {
+        t_store_initTextAndCharacteristics(el_product, product);
+        return;
+    }
+
+    var tabDesign = opts.tabs;
+    var isAccordion = tabDesign === 'accordion';
+    var colors = t_store_getCustomColors(opts);
+
+    // Update tab items
+    el_tabs.find('.t-store__tabs__item').each(function(i) {
+        var el_title = $(this).find('.t-store__tabs__item-title');
+        var title = el_title.text().trim();
+        var el_button = $(this).find('.t-store__tabs__item-button');
+        var el_content = $(this).find('.t-store__tabs__content');
+
+        $(this).attr('data-tab-title', t_store_escapeQuote(title));
+        el_button.attr('data-tab-title', t_store_escapeQuote(title));
+
+        if (i === 0) {
+            $(this).addClass('t-store__tabs__item_active');
+            el_button.addClass('t-store__tabs__item-button_active');
+
+            $(this).find('.t-store__tabs__content').css('display', 'block');
+        }
+
+        if (colors.titleColor) {
+            el_title.css('color', colors.titleColor);
+        }
+
+        if (colors.descrColor) {
+            el_content.css('color', colors.descrColor);
+        }
+
+        var closeIcon = t_store_tabs_closeIcon_getHtml(recid, opts);
+        el_button.append(closeIcon);
+    });
+
+    // Update tab controls
+    el_tabs.find('.t-store__tabs__button').each(function(i) {
+        var el_title = $(this).find('.t-store__tabs__button-title');
+        var title = el_title.text().trim();
+
+        $(this).attr('data-tab-title', t_store_escapeQuote(title));
+
+        if (i === 0) {
+            $(this).addClass('t-store__tabs__button_active');
+        }
+
+        if (colors.titleColor) {
+            el_title.css('color', colors.titleColor);
+        }
+    });
+
+    if (!isAccordion) {
+        var el_controls = el_tabs.find('.t-store__tabs__controls');
+        el_controls.prepend(t_store_tabs_fade_getStyle(opts));
+        el_controls.prepend(t_store_tabs_tabBorder_getStyle(recid, opts));
+    } else {
+        el_tabs.find('.t-store__tabs__list').prepend(t_store_tabs_accordionBorder_getStyle(recid, opts));
+    }
+
+    el_tabs.removeClass('t-store__tabs_snippet');
+    el_tabs.addClass('t-col');
+    el_tabs.addClass('t-col_12');
+    t_store_tabs_handleOnChange(recid, el_product);
+    t_store_initTextAndCharacteristics(el_product, product);
 }
 
 function t_store_initRouting() {
@@ -709,6 +782,7 @@ function t_store_loadProducts(method, recid, opts, slice, relevantsOpts) {
                 t_animate__startAnimation();
             });
 
+			$('body').trigger('twishlist_addbtn');
             window.tStoreProductsRequested = false;
         },
         error: function (xhr) {
@@ -718,7 +792,8 @@ function t_store_loadProducts(method, recid, opts, slice, relevantsOpts) {
             /* check internet connection */
             var ts_delta = Date.now() - ts;
             if (xhr.status == 0 && ts_delta < 100) {
-                alert('Request error (get store products). Please check internet connection...');
+                // eslint-disable-next-line no-console
+                console.log('Request error (get store products). Please check internet connection...');
             }
             window.tStoreProductsRequested = false;
         },
@@ -857,9 +932,21 @@ function t_store_loadProductTabs(recid, opts, curProdUid) {
         c: c,
     };
 
+    if (!opts.isPublishedPage) {
+        dataObj.projectid = $('.t-records').attr('data-tilda-project-id');
+    }
+
+    var apiUrl = 'https://store.tildacdn.com/api/getproducttabs/';
+
+    /* inside tilda we get data from another url */
+    if (!opts.isPublishedPage) {
+        dataObj.projectid = $('.t-records').attr('data-tilda-project-id');
+        apiUrl = 'https://tilda.cc/projects/store/getproducttabs/';
+    }
+
     return $.ajax({
         type: 'GET',
-        url: 'https://store.tildacdn.com/api/getproducttabs/',
+        url: apiUrl,
         data: dataObj,
         dataType: 'text',
         success: function (data) {
@@ -869,7 +956,8 @@ function t_store_loadProductTabs(recid, opts, curProdUid) {
             }
 
             if (typeof data !== 'object') {
-                console.log("Wrong tabs data format for product uid = " + curProdUid + ' in storepart = ' + opts.storepart);
+                // eslint-disable-next-line no-console
+                console.log('Wrong tabs data format for product uid = ' + curProdUid + ' in storepart = ' + opts.storepart);
                 return;
             }
 
@@ -922,6 +1010,21 @@ function t_store_process(productsArr, recid, opts, isNextSlice, isRelevantsShow,
         return;
     }
 
+    if (isRelevantsShow && opts.relevants_slider && opts.prodCard.shadowSize && opts.prodCard.shadowSize.length) {
+        var paddingStyle = '';
+        var size = parseInt(opts.prodCard.shadowSize, 10) > 10 ? '10px' : opts.prodCard.shadowSize;
+        // Add paddings for shadows in relevants block
+        paddingStyle += '<style>\n';
+        paddingStyle += '    @media screen and (max-width:960px) {\n';
+        paddingStyle += '        #rec' + recid +  ' .t-store .t-store__relevants-grid-cont .t-store__card__wrap_all {\n';
+        paddingStyle += '            margin: ' + size + ';\n';
+        paddingStyle += '        }\n';
+        paddingStyle += '    }\n';
+        paddingStyle += '</style>';
+
+        rec.find('.t-popup .t-store__relevants__container').before(paddingStyle);
+    }
+
     /* generate product cards HTML */
     var productsHtml = '';
     var blocksInRowForRelevant = 4;
@@ -945,7 +1048,7 @@ function t_store_process(productsArr, recid, opts, isNextSlice, isRelevantsShow,
             '<div class="t-slds__items-wrapper ' +
             animationduration +
             '" data-slider-items-in-row="' +
-            ((!isRelevantsShow && isT973) ? blocksInRow : blocksInRowForRelevant)  +
+            ((!isRelevantsShow && isT973) ? blocksInRow : blocksInRowForRelevant) +
             '" data-slider-transition="' +
             animationspeed +
             '" data-slider-with-cycle="true" data-slider-cycle="yes" data-slider-correct-height="' + ((!isRelevantsShow && isT973) ? 'true' : 'false') + '" data-auto-correct-mobile-width="false">';
@@ -1034,7 +1137,7 @@ function t_store_process(productsArr, recid, opts, isNextSlice, isRelevantsShow,
     $.each(productsArr, function (key, product) {
         var el_product = isRelevantsShow
             ? rec.find('.t-store__relevants__container .js-product.t-item[data-product-gen-uid="' + product.uid + '"]')
-            : rec.find('.js-product.t-item[data-product-gen-uid="' + product.uid + '"]');
+            : rec.find('.t-store__grid-cont .js-product.t-item[data-product-gen-uid="' + product.uid + '"]');
         el_product.data('cardSize', 'small');
         product = obj_products[product.uid];
         /* create quantity input for popup */
@@ -1168,12 +1271,10 @@ function t_store_pagination_draw(recid, opts, curPage, nextSlice, total) {
     if (pagination.length) {
         pagination.empty();
         pagination.append(html);
+    } else if (loadmore.length) {
+        loadmore.after(html);
     } else {
-        if (loadmore.length) {
-            loadmore.after(html);
-        } else {
-            gridContainer.after(html);
-        }
+        gridContainer.after(html);
     }
 
     var pagination = rec.find('.t-store__pagination');
@@ -1192,7 +1293,8 @@ function t_store_pagination_getHtml(recid, opts, curPage, pagingRange, totalPage
     var str = '';
 
     var addStyles = t_store_pagination_getButtonStyles(opts);
-    var iconsColor = opts.typo.descr || addStyles.bgColor || '#000000';
+    var descrColor = opts.typo && opts.typo.descrColor && opts.typo.descrColor.length ? opts.typo.descrColor : null;
+    var iconsColor = descrColor || addStyles.bgColor || '#000000';
     var separator = '...';
     var prev = '<?xml version="1.0" encoding="UTF-8"?>\
     <svg class="t-store__pagination__arrow t-store__pagination__arrow_prev" width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">\
@@ -1308,7 +1410,7 @@ function t_store_pagination_getButtonStyles(opts) {
         } else if (style.indexOf('border-radius') === 0) {
             borderRadius = style.replace('border-radius:', '').trim();
         }
-    })
+    });
 
     if (bgColor) {
         result.bgColor = bgColor;
@@ -1385,7 +1487,7 @@ function t_store_pagination_addEvents(recid, opts) {
                 }, 50);
             }
         }
-    })
+    });
 }
 
 function t_store_pagination_updateUrl(recid, opts, slice) {
@@ -1656,6 +1758,7 @@ function t_store_get_productPopup_closeIcon_html(opts) {
     return str;
 }
 
+/* Used in the snippet only */
 // eslint-disable-next-line no-unused-vars
 function t_store_get_productPopup_closeIcon_color(recid, opts) {
     // Usefull function for snippet
@@ -1891,9 +1994,9 @@ function t_store_get_productCard_simpleStructure(product, edition, opts, link, i
 }
 
 function t_store_get_productCard_wrapperStructure(product, edition, opts, link, isRelevantsShow, recid, rec) {
+    var str = '';
     var wrapStyles = t_store_get_productCard_getWrapperStylesStr(opts);
     var controlsStyle = opts.prodCard.showOpts ? '' : 'style="display:none;"';
-    var str = '';
     var padClass = opts.prodCard && opts.prodCard.txtPad ? 't-store__card__wrap_pad-' + opts.prodCard.txtPad : '';
     str += '<div class="t-store__card__wrap_all ' + padClass + '" style="' + wrapStyles + '">';
     str += '    ' + link.open;
@@ -2167,14 +2270,18 @@ function t_store_get_productCard_onePrice_html(product, edition, opts, type) {
     }
 
     str += '<div class="' + priceStylingClass + ' t-store__card__price-item t-name t-name_xs" ' + styleAttr + '>';
-    str += (opts.currencySide !== 'r' && currency ? currency : '');
+    if (!formattedPriceRange) {
+        str += (opts.currencySide !== 'r' && currency ? currency : '');
+    }
     str += '<div class="' + jsProdClass + ' t-store__card__price-value notranslate" translate="no" ' + priceFieldAttr + '>' + formattedPrice + '</div>';
-    str += (opts.currencySide === 'r' && currency ? currency : '');
+    if (!formattedPriceRange) {
+        str += (opts.currencySide === 'r' && currency ? currency : '');
+    }
 
     if (product.portion > 0) {
         str += '<div class="t-store__prod__price-portion">/';
         if (product.portion !== '1') {
-            str +=  + product.portion + ' ';
+            str += + product.portion + ' ';
         }
         str += t_store_dict(product.unit) + '</div>';
     }
@@ -2393,30 +2500,26 @@ function t_store_openProductPopup(recid, opts, productObj, isRelevantsShow, from
     t_store_drawProdPopup(recid, el_popup, productObj, opts, fromPopup);
     t_store_showPopup(recid, fromHistory, fromPopup);
 
-    /* read title for analytics, when we add data to popup */
-    var analytics = el_popup.attr('data-track-popup');
-    if (analytics > '') {
-        var virtTitle = productObj.title;
-        if (!virtTitle) {
-            virtTitle = 'prod' + productObj.uid;
+    try {
+        if (Tilda && typeof Tilda.sendEcommerceEvent == 'function') {
+            Tilda.sendEcommerceEvent('detail', [{
+                id: '' + (productObj.id ? productObj.id : productObj.uid),
+                uid: '' + productObj.uid,
+                price: '' + (productObj.price_min ? productObj.price_min : productObj.price),
+                sku: productObj.sku ? productObj.sku : '',
+                name: productObj.title,
+            }, ]);
         }
-        try {
-            if (Tilda && typeof Tilda.sendEcommerceEvent == 'function') {
-                Tilda.sendEcommerceEvent('detail', [
-                    {
-                        id: '' + (productObj.id ? productObj.id : productObj.uid),
-                        uid: '' + productObj.uid,
-                        price: '' + (productObj.price_min ? productObj.price_min : productObj.price),
-                        sku: productObj.sku ? productObj.sku : '',
-                        name: productObj.title,
-                    },
-                ]);
-            } else {
-                Tilda.sendEventToStatistics(analytics, virtTitle);
-            }
-        } catch (e) {
-            Tilda.sendEventToStatistics(analytics, virtTitle);
+
+        /* read title for analytics, when we add data to popup */
+        var analytics = el_popup.attr('data-track-popup');
+        if (analytics > '') {
+            var virtTitle = 'Popup: ' + productObj.title;
+
+            Tilda.sendEventToStatistics(analytics, virtTitle, '', 0);
         }
+    } catch (e) {
+        /* */
     }
 
     if (opts.isPublishedPage && !fromHistory) {
@@ -2429,6 +2532,7 @@ function t_store_openProductPopup(recid, opts, productObj, isRelevantsShow, from
         t_slds_updateSlider(recid);
     }
 
+    /* TODO: move code into function */
     if (showRelevants && !isSnippet) {
         var relevantsLabel = {
             cc: 'current_category',
@@ -2759,37 +2863,9 @@ function t_store_drawProdPopup(recid, el_popup, product, options, fromPopup) {
 }
 
 function t_store_initTextAndCharacteristics(el_popup, product) {
-    // If function is called for snippet, el_popup is el_product
-    // Find better name for param is advised :)
+    var isSnippet = $.contains($('#allrecords')[0], $('.t-store__product-snippet')[0]);
     var el_prodTxt = el_popup.find('.js-store-prod-text');
     el_prodTxt.empty().hide();
-
-    var tabsData = window.tStoreTabsList ? window.tStoreTabsList[product.uid] : null;
-    var isCharcs = product.characteristics && product.characteristics.length > 0;
-
-    var isDescriptionDrawn = true;
-    var isCharsDrawn = isCharcs;
-    // If any tab contains description or product characteristics, hide it
-    if (tabsData) {
-        for (var tab in tabsData) {
-            if (tabsData[tab].type === 'text') {
-                isDescriptionDrawn = false;
-            } else if (tabsData[tab].type === 'chars') {
-                isCharsDrawn = false;
-            }
-        }
-    }
-
-    var prodTxt = '<div class="js-store-prod-all-text"' + (!isDescriptionDrawn ? ' style="display: none;"' : '') + '>';
-    prodTxt += product.text ? product.text : product.descr ? product.descr : '';
-    prodTxt += '</div>';
-
-    var charcsTxt = '<div class="js-store-prod-all-charcs" style="margin-top: 20px;' + (!isCharsDrawn ? ' display: none;' : '') + '">';
-    if (isCharcs) {
-        product.characteristics.forEach(function (ch) {
-            charcsTxt += '<p class="js-store-prod-charcs">' + ch.title + ': ' + ch.value + '</p>';
-        });
-    }
 
     var pack_label = product.pack_label || '',
         pack_m = parseInt(product.pack_m, 10) || 0,
@@ -2798,8 +2874,40 @@ function t_store_initTextAndCharacteristics(el_popup, product) {
         pack_z = parseInt(product.pack_z, 10) || 0,
         productUrl = product.url || '';
 
-    /* draw characteristics */
+    var isDimentions = pack_label && pack_x && pack_y && pack_z;
+    var isWeight = pack_m;
+    var isCharcs =
+        (product.characteristics && product.characteristics.length > 0)
+        || (isDimentions || isWeight);
 
+    var isDescriptionDrawn = true;
+    var isCharsDrawn = isCharcs;
+
+    // If any tab contains description or product characteristics, hide it in product overview
+    var el_tabDescr = el_popup.find('.t-store__tabs__item[data-tab-type="text"]');
+    var el_tabCharcs = el_popup.find('.t-store__tabs__item[data-tab-type="chars"]');
+    if (el_tabDescr.length) {
+        isDescriptionDrawn = false;
+    }
+
+    if (el_tabCharcs.length) {
+        isCharsDrawn = false;
+    }
+
+    var prodTxt = '<div class="js-store-prod-all-text"' + (!isDescriptionDrawn ? ' style="display: none;"' : '') + '>';
+    prodTxt += product.text ? product.text : product.descr ? product.descr : '';
+    prodTxt += '</div>';
+
+    var charcsStyle = isDescriptionDrawn ? 'margin-top: 20px;' : '';
+    charcsStyle += !isCharsDrawn ? 'display: none;' : '';
+    var charcsTxt = '<div class="js-store-prod-all-charcs"' + (charcsStyle.length ? ' style="' + charcsStyle + '"' : '') + '>';
+    if (isCharcs) {
+        product.characteristics.forEach(function (ch) {
+            charcsTxt += '<p class="js-store-prod-charcs">' + ch.title + ': ' + ch.value + '</p>';
+        });
+    }
+
+    /* draw characteristics */
     /* add 'dimensions' & 'weight' always */
     charcsTxt += '<p class="js-store-prod-dimensions"></p>';
     charcsTxt += '<p class="js-store-prod-weight"></p>';
@@ -2808,15 +2916,38 @@ function t_store_initTextAndCharacteristics(el_popup, product) {
     el_prodTxt.append(charcsTxt);
     el_prodTxt.show();
 
+    // Redraw dimensions and weight if corresponding tab exists in snippet
+    if (isSnippet && el_tabCharcs.length) {
+        var el_charcsContent = el_tabCharcs.find('.t-store__tabs__content');
+        el_charcsContent.empty();
+        el_charcsContent.append(charcsTxt);
+        el_charcsContent.find('.js-store-prod-all-charcs').show();
+        el_charcsContent.find('.js-store-prod-all-charcs').css('margin-top', '0');
+    }
+
     /* add dimension if != 0 */
-    if (pack_label && pack_x && pack_y && pack_z) {
+    if (isDimentions) {
         var dimension = pack_x + 'x' + pack_y + 'x' + pack_z;
         el_popup.find('.js-store-prod-dimensions').html(t_store_dict('product-' + pack_label) + ': ' + dimension + '&nbsp;' + t_store_dict('mm'));
+
+        if (isSnippet) {
+            el_tabCharcs.find('.js-store-prod-dimensions').html(t_store_dict('product-' + pack_label) + ': ' + dimension + '&nbsp;' + t_store_dict('mm'));
+
+            el_popup.attr('data-product-pack-label', pack_label);
+            el_popup.attr('data-product-pack-x', pack_x);
+            el_popup.attr('data-product-pack-y', pack_y);
+            el_popup.attr('data-product-pack-z', pack_z);
+        }
     }
 
     /* add weight if != 0 */
-    if (pack_m) {
+    if (isWeight) {
         el_popup.find('.js-store-prod-weight').html(t_store_dict('product-weight') + ': ' + pack_m + '&nbsp;' + t_store_dict('g'));
+
+        if (isSnippet) {
+            el_tabCharcs.find('.js-store-prod-weight').html(t_store_dict('product-weight') + ': ' + pack_m + '&nbsp;' + t_store_dict('g'));
+            el_popup.attr('data-product-pack-m', pack_m);
+        }
     }
     /* */
 
@@ -2994,13 +3125,6 @@ function t_store_option_styleCustomControl(recid, options, curOption, optionsWra
     str += '</form>';
 
     wrapper.append(str);
-
-    // if (window.lazy === 'y') {
-    //     setTimeout(function() {
-    //         t_lazyload_update();
-    //         console.log('here');
-    //     }, 500);
-    // }
 }
 
 function t_store_option_getColorValue(valuesObj, value) {
@@ -3126,6 +3250,7 @@ function t_store_showPopup(recid, fromHistory, fromPopup) {
     setTimeout(function () {
         popup.find('.t-popup__container').addClass('t-popup__container-animated');
         popup.addClass('t-popup_show');
+		$('body').trigger('twishlist_addbtn');
         if (window.lazy === 'y' || $('#allrecords').attr('data-tilda-lazy') === 'yes') {
             t_store_onFuncLoad('t_lazyload_update', function () {
                 t_lazyload_update();
@@ -3273,6 +3398,7 @@ function t_store_closePopup(fromHistory, recid, opts) {
 
     $(document).unbind('keydown');
     $(window).unbind('resize', window.t_store_prodPopup_updateGalleryThumbsEvent);
+	$('body').trigger('twishlist_addbtn');
 }
 
 function t_store_isStorepartFromHistoryActive(storepartuid, recid, opts) {
@@ -3360,74 +3486,320 @@ function t_store_removeSizesFromStylesLine(styleStr) {
 }
 
 function t_store_drawProdPopup_drawTabs(recid, opts, tabsData) {
-    var isSnippet = $.contains($('#allrecords')[0], $('.t-store__product-snippet')[0]);
     var el_rec = $('#rec' + recid);
-    var el_wrapper = isSnippet
-        ? el_rec.find('.js-product .t-container')
-        : el_rec.find('.t-popup .js-product');
+    var el_wrapper = el_rec.find('.t-popup .js-product');
 
     var str = '';
     var tabDesign = opts.tabs;
     var isAccordion = tabDesign === 'accordion';
     var activeTab = !isAccordion && tabsData[0] ? tabsData[0] : null;
 
-    str += '<div class="js-store-tabs t-store__tabs" data-tab-design="' + tabDesign +'"' + (activeTab ? ' data-active-tab="' + activeTab.title + '"' : '') + '>';
+    // Styles from block settings
+    var colors = t_store_getCustomColors(opts);
+    var descrColorStyle = !colors.descrColor ? '' : ' style="color: ' + colors.descrColor + ';"';
+    var titleColorStyle = !colors.titleColor ? '' : ' style="color: ' + colors.titleColor + ';"';
 
-    str += '    <div class="t-store__tabs__list t-store__tabs__list_' + tabDesign + '">';
+    // Start tab layout
+    str += '<div class="t-store__tabs t-store__tabs_' + tabDesign + ' t-col t-col_12" data-tab-design="' + tabDesign +'"' + (activeTab ? ' data-active-tab="' + activeTab.title + '"' : '') + '>';
+
+    // Draw tabs controls for Tab design
+    str += '<div class="t-store__tabs__controls-wrap">';
+    str += '    <div class="t-store__tabs__controls">';
+    if (!isAccordion) {
+        str += t_store_tabs_fade_getStyle(opts);
+        str += t_store_tabs_tabBorder_getStyle(recid, opts);
+    }
+        tabsData.forEach(function(tab, i) {
+            str += '<div class="t-store__tabs__button js-store-tab-button'
+                + (i === 0 && !isAccordion ? ' t-store__tabs__button_active' : ' ')
+                + '" data-tab-title="' + t_store_escapeQuote(tab.title) + '"'
+                + '>';
+            str += '    <div class="t-store__tabs__button-title t-name t-name_xs"' + titleColorStyle + '>';
+            str +=              tab.title;
+            str += '    </div>';
+            str += '</div>';
+        });
+    str += '    </div>';
+    str += '</div>';
+
+    // Draw unified layout for any tab design
+    str += '    <div class="t-store__tabs__list">';
+
+    if (isAccordion) {
+        str += t_store_tabs_accordionBorder_getStyle(recid, opts);
+    }
     tabsData.forEach(function(tab, i) {
-        var content = t_store_drawProdPopup_getSingleTabData(tab, el_wrapper);
+        var content = t_store_drawProdPopup_getSingleTabData(tab, el_wrapper, opts);
 
-        str += '        <div class="t-store__tabs__item' + (i === 0 && !isAccordion ? ' t-store__tabs__item_active' : ' ') + ' t-store__tabs__item_' + tabDesign + ' js-store-tab" data-tab-title="' + t_store_escapeQuote(tab.title) + '" data-tab-type="' + tab.type + '">';
+        str += '        <div class="t-store__tabs__item' + (i === 0 && !isAccordion ? ' t-store__tabs__item_active' : ' ') + '"' + ' data-tab-title="' + t_store_escapeQuote(tab.title) + '" data-tab-type="' + tab.type + '">';
 
-        str += '            <div class="t-store__tabs__button js-store-tab-button">';
-        str += '                <span class="t-store__tabs__item-title t-name t-name_xs">';
+        str += '            <div class="t-store__tabs__item-button js-store-tab-button"' + ' data-tab-title="' + t_store_escapeQuote(tab.title) + '">';
+        str += '                <div class="t-store__tabs__item-title t-name t-name_xs"' + titleColorStyle + '>';
         str +=                      tab.title;
-        str += '                </span>';
-        if (isAccordion) {
-        str += '                <div class="t-store__tabs__close">';
-        str += '                <svg class="t-store__tabs__close-icon" width="24px" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">';
-        str += '                    <g stroke="none" stroke-width="1px" fill="none" fill-rule="evenodd" stroke-linecap="square">';
-        str += '                    <g transform="translate(1.000000, 1.000000)" stroke="#222222">';
-        str += '                        <path d="M0,11 L22,11"></path>';
-        str += '                        <path d="M11,0 L11,22"></path>';
-        str += '                    </g>';
-        str += '                    </g>';
-        str += '                </svg>';
         str += '                </div>';
-        }
-
-        str += '            </div>';
         if (isAccordion) {
-        str += '            <div class="t-store__tabs__content t-descr t-descr_xxs" style="display: none;">';
+            str += t_store_tabs_closeIcon_getHtml(recid, opts);
+        }
+        str += '            </div>';
+        // Add content
+        str += '            <div class="t-store__tabs__content t-descr t-descr_xxs"' + descrColorStyle + '>';
         str +=                     content;
         str += '            </div>';
-        }
         str += '        </div>';
     });
     str += '    </div>';
-
-    if (!isAccordion) {
-        var activeContent = t_store_drawProdPopup_getSingleTabData(activeTab, el_wrapper);
-        str += '    <div class="t-store__tabs__content t-descr t-descr_xxs">';
-        str +=         activeContent;
-        str += '    </div>';
-    }
     str += '</div>';
-    el_wrapper.append(str);
+
+    var el_tabs = el_wrapper.find('.t-store__tabs');
+
+    if (el_tabs.length) {
+        el_tabs.replaceWith(str);
+    } else {
+        el_wrapper.append(str);
+    }
 }
 
-function t_store_drawProdPopup_getSingleTabData(tab, el_wrapper) {
+function t_store_getCustomColors(opts) {
+    var descrColor = opts.typo && opts.typo.descrColor ? opts.typo.descrColor : null;
+    var titleColor = opts.typo && opts.typo.titleColor ? opts.typo.titleColor : null;
+
+    var bgColor = opts.popup_opts.containerBgColor && opts.popup_opts.containerBgColor.length ? opts.popup_opts.containerBgColor : '#ffffff';
+    var bgColorRgb = t_store_hexToRgb(bgColor);
+    var fadeColorTo = 'rgba(' + bgColorRgb.join(',') + ',1)';
+    var fadeColorFrom = 'rgba(' + bgColorRgb.join(',') + ',0)';
+
+    var titleColor = opts.typo && opts.typo.titleColor ? opts.typo.titleColor : null;
+    var descrColor = opts.typo && opts.typo.descrColor ? opts.typo.descrColor : null;
+
+    var titleColorRgb,
+        borderActiveColor,
+        borderPassiveColor;
+
+    if (titleColor) {
+        titleColorRgb = t_store_hexToRgb(titleColor);
+        borderActiveColor = 'rgba(' + titleColorRgb.join(',') + ',1)';
+        borderPassiveColor = 'rgba(' + titleColorRgb.join(',') + ',0.3)';
+    }
+
+    return {
+        descrColor: descrColor,
+        titleColor: titleColor,
+        titleColorRgb: titleColorRgb,
+        borderActiveColor: borderActiveColor,
+        borderPassiveColor: borderPassiveColor,
+        bgColor: bgColor,
+        bgColorRgb: bgColorRgb,
+        fadeColorTo: fadeColorTo,
+        fadeColorFrom: fadeColorFrom,
+
+    };
+}
+
+function t_store_tabs_fade_getStyle(opts) {
+    var str = '';
+    var colors = t_store_getCustomColors(opts);
+    var fadeStyleLeft = 'background-image:linear-gradient(to right,' + colors.fadeColorTo + ' 0%, ' + colors.fadeColorFrom + ' 90%)';
+    var fadeStyleRight = 'background-image:linear-gradient(to right,' + colors.fadeColorFrom + ' 0%, ' + colors.fadeColorTo + ' 90%)';
+
+    str += '<style>';
+    str += '    .t-store__tabs__controls-wrap:before, .t-store__tabs__controls-wrap:after {\n';
+    str += '        display: none;\n';
+    str += '        z-index: 1;\n';
+    str += '        position: absolute;\n';
+    str += '        content: "";\n';
+    str += '        width: 50px;\n';
+    str += '        bottom: 1px;\n';
+    str += '        top: 0;\n';
+    str += '        pointer-events: none;\n';
+    str += '    }\n';
+    str += '    .t-store__tabs__controls-wrap_left:before {\n';
+    str +=         fadeStyleLeft + ';\n';
+    str += '        left: -1px;\n';
+    str += '    }\n';
+    str += '    .t-store__tabs__controls-wrap_right:after {\n';
+    str +=          fadeStyleRight + ';\n';
+    str += '        right: -2px;\n';
+    str += '    }\n';
+    str += '    .t-store__tabs__controls-wrap_left:before {\n';
+    str += '        display: block;\n';
+    str += '    }\n';
+    str += '    .t-store__tabs__controls-wrap_right:after {\n';
+    str += '        display: block;\n';
+    str += '    }\n';
+    str += '</style>';
+
+    return str;
+}
+
+function t_store_tabs_tabBorder_getStyle(recid, opts) {
+    var str = '';
+    var colors = t_store_getCustomColors(opts);
+
+    if (colors.borderActiveColor && colors.borderPassiveColor) {
+        str += '<style>';
+
+        str += '@media screen and (max-width:560px) {\n';
+        str += '    #rec' + recid +  ' .t-store .t-store__tabs__controls .t-store__tabs__button.t-store__tabs__button_active {\n';
+        str += '        border-bottom: 1px solid ' + colors.borderPassiveColor + ';\n';
+        str += '    }\n';
+
+        str += '    #rec' + recid +  ' .t-store .t-store__tabs__controls .t-store__tabs__button_active .t-store__tabs__button-title:after {\n';
+        str += '        border-bottom: 1px solid ' + colors.borderActiveColor + ';\n';
+        str += '    }\n';
+
+        str += '}\n';
+
+        str += '    #rec' + recid +  ' .t-store .t-store__tabs .t-store__tabs__button {\n';
+        str += '        border-bottom: 1px solid ' + colors.borderPassiveColor + ';\n';
+        str += '    }\n';
+
+        str += '    #rec' + recid +  ' .t-store .t-store__tabs__controls .t-store__tabs__button_active, \n';
+        str += '    #rec' + recid +  ' .t-store .t-store__tabs__controls .t-store__tabs__button:hover, \n';
+        str += '    #rec' + recid +  ' .t-store .t-store__tabs_snippet .t-store__tabs__controls .t-store__tabs__button:first-child {\n';
+        str += '        border-bottom: 1px solid ' + colors.borderActiveColor + ';\n';
+        str += '    }\n';
+
+        str += '</style>';
+    }
+    return str;
+}
+
+function t_store_tabs_accordionBorder_getStyle(recid, opts) {
+    var str = '';
+    var colors = t_store_getCustomColors(opts);
+
+    if (colors.borderActiveColor && colors.borderPassiveColor) {
+        str += '<style>';
+        str += '    #rec' + recid +  ' .t-store .t-store__tabs.t-store__tabs_accordion .t-store__tabs__item-button {\n';
+        str += '        border-top: 1px solid ' + colors.borderActiveColor + ';\n';
+        str += '    }\n';
+
+        str += '    #rec' + recid +  ' .t-store .t-store__tabs_accordion .t-store__tabs__item-button:not(.t-store__tabs__item-button_active) {\n';
+        str += '        border-bottom: 1px solid ' + colors.borderActiveColor + ';\n';
+        str += '    }\n';
+        str += '</style>';
+    }
+    return str;
+}
+
+function t_store_tabs_closeIcon_getHtml(recid, opts) {
+    var str = '';
+    var colors = t_store_getCustomColors(opts);
+    var fillColor = colors.borderActiveColor ? colors.borderActiveColor : '#222222';
+
+    str += '<div class="t-store__tabs__close">';
+    if (colors.borderPassiveColor) {
+        str += '<style>';
+        str += '    #rec' + recid +  ' .t-store .t-store__tabs__close:after {\n';
+        str += '        background-color: ' + colors.borderPassiveColor + ';\n';
+        str += '    }\n';
+        str += '</style>';
+    }
+
+    str += '    <svg class="t-store__tabs__close-icon" width="24px" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">';
+    str += '        <g stroke="none" stroke-width="1px" fill="none" fill-rule="evenodd" stroke-linecap="square">';
+    str += '        <g transform="translate(1.000000, 1.000000)" stroke="' + fillColor + '">';
+    str += '            <path d="M0,11 L22,11"></path>';
+    str += '            <path d="M11,0 L11,22"></path>';
+    str += '        </g>';
+    str += '        </g>';
+    str += '    </svg>';
+    str += '</div>';
+
+    return str;
+}
+
+function t_store_drawProdPopup_getSingleTabData(tab, el_wrapper, opts) {
     if (!tab || typeof tab !== 'object' ) {
         return null;
     }
 
     if (tab.type === 'info' || tab.type === 'template') {
-        return tab.data;
+        return t_store_addLazyLoadToHtml(opts, tab.data);
     } else if (tab.type === 'text') {
         return el_wrapper.find('.js-store-prod-all-text').html();
     } else if (tab.type === 'chars') {
         return el_wrapper.find('.js-store-prod-all-charcs').html();
     }
+}
+
+function t_store_addLazyLoadToHtml(opts, string) {
+    /*
+    lazyLoad works just in published pages,
+    so in redactor and previewmode we do not add smaller images
+    */
+    if (!opts.isPublishedPage || window.lazy !== 'y' || $('#allrecords').attr('data-tilda-lazy') !== 'yes') {
+        return string;
+    }
+
+    var html = $('<div></div>').append(string);
+
+    html.find('img').each(function() {
+        var image = $(this);
+        var source = image.attr('src');
+        image.addClass('t-img');
+
+        if (
+            source.indexOf('.tildacdn.com') == -1
+            || source.indexOf('-/empty/') > 0
+            || source.indexOf('-/resize/') > 0
+        ) {
+            // do nothing
+        } else {
+            var arr = source.split('/');
+            arr.splice(source.split('/').length - 1, 0, '-/empty');
+            var newSrc = arr.join('/');
+
+            image.attr('src', newSrc);
+            image.attr('data-original', source);
+        }
+    });
+
+    // TODO Uncomment when lazy load for videos will be ready to use
+    // tilda-video-1.0.js is required
+    // html.find('.t-redactor__video-container').each(function() {
+    //     var wrapper = $(this);
+    //     var url = wrapper.find('iframe').attr('src');
+    //     var videoId = '';
+    //     wrapper.addClass('t-video-lazyload');
+    //     wrapper.attr('data-videolazy-load', 'false');
+
+    //     var type = null;
+    //     if (/youtube\.com/gi.test(url)) {
+    //         type = 'youtube';
+    //     }
+    //     if (/vimeo\.com/gi.test(url)) {
+    //         type = 'vimeo';
+    //     }
+
+    //     if (type == 'youtube') {
+    //         if (url.indexOf('youtube.com/watch') !== -1) {
+    //             console.log('1');
+    //             videoId = url.match(/youtube\.com\/watch\?v=([a-z0-9_-]{11})/i);
+    //         } else if (url.indexOf('youtube.com/embed') !== -1) {
+    //             videoId = url.match(/youtube\.com\/embed\/([a-z0-9_-]{11})/i);
+    //         } else {
+    //             videoId = url.match(/youtu\.be\/([a-z0-9_-]{11})/i);
+    //         }
+
+    //         if (videoId && videoId.length > 1) {
+    //             videoId = videoId[1];
+    //         }
+    //     }
+
+    //     if (type == 'vimeo') {
+    //         videoId = url.match(/vimeo\.com\/([0-9]+)/i);
+    //         if (videoId && videoId.length > 1) {
+    //             videoId = videoId[1];
+    //         }
+    //     }
+
+    //     wrapper.attr('data-videolazy-id', videoId);
+    //     wrapper.attr('data-videolazy-type', type);
+    // })
+
+    // Return as string
+    return html.html();
 }
 
 function t_store_drawProdPopup_drawGallery(recid, el_popup, product, options) {
@@ -3829,14 +4201,14 @@ function t_store_get_productcard_thumbsGallery_html(options, galleryLength, maxT
 
     var countForGalleryPreview = galleryLength - maxThumbsCount;
     if (options.slider_opts.controls === 'thumbs' || options.slider_opts.controls === 'arrowsthumbs') {
-        str +=
-            '<div class="t-slds__thumbsbullet t-slds__bullet t-slds__thumbs_gallery [[activeClass]]" [[zoomAttrs]] data-gallery-length=' +
-            countForGalleryPreview +
-            ' data-slide-bullet-for=' +
-            maxThumbsCount +
-            '>';
-        str +=
-            '    <div class="t-slds__bgimg t-bgimg" data-original="[[imgsource]]" style="padding-bottom: 100%; background-image: url(\'[[imgsource_lazy]]\');"></div>';
+        var classes = 't-slds__thumbsbullet t-slds__bullet t-slds__thumbs_gallery [[activeClass]]';
+        if (options.slider_slidesOpts.zoomable) {
+            classes += ' t-slds__thumbs_gallery-zoomable';
+        }
+        str += '<div class="' + classes + '" [[zoomAttrs]]' +
+            ' data-gallery-length="' + countForGalleryPreview + '"'+
+            ' data-slide-bullet-for="' + maxThumbsCount + '">';
+        str +='    <div class="t-slds__bgimg t-bgimg" data-original="[[imgsource]]" style="padding-bottom: 100%; background-image: url(\'[[imgsource_lazy]]\');"></div>';
         str += '    <div class="t-slds__thumbsbullet-border"></div>';
         str += '</div>';
 
@@ -4501,106 +4873,6 @@ function t_store_dict(msg) {
     return 'Text not found "' + msg + '"';
 }
 
-// eslint-disable-next-line no-unused-vars
-function t_store_convertTextToUrlSlug(txt) {
-    var str = txt;
-    str = str.replace(/^\s+|\s+$/g, ''); /* trim */
-    str = str.replace('&lt;', ''); /* remove tags */
-    str = str.toLowerCase();
-    str = t_store_transliterate(str); /* transliterate cyrillic symbols */
-    str = str.replace(/[^a-z0-9 -]/g, ''); /* remove invalid chars */
-    str = str.replace(/\s+/g, '-'); /* collapse whitespace and replace by - */
-    str = str.replace(/-+/g, '-'); /* collapse dashes */
-    /* workaround for Chineese and other non-latin languages */
-    if (str.length === 0 || !str.match(/[a-z]/i)) {
-        str = txt;
-        str = str.replace(/\s+/g, '-'); /* collapse whitespace and replace by - */
-        str = str.replace('&lt;', ''); /* remove tags */
-    }
-    /* workaround for long titles */
-    if (str.length > 40) {
-        str = str.slice(0, 40);
-        if (str[str.length - 1] === '-') {
-            str = str.substring(0, str.length - 1);
-        }
-    }
-    return str;
-}
-
-function t_store_transliterate(word) {
-    var a = {
-        Ё: 'YO',
-        Й: 'I',
-        Ц: 'TS',
-        У: 'U',
-        К: 'K',
-        Е: 'E',
-        Н: 'N',
-        Г: 'G',
-        Ш: 'SH',
-        Щ: 'SCH',
-        З: 'Z',
-        Х: 'H',
-        Ъ: "'",
-        ё: 'yo',
-        й: 'i',
-        ц: 'ts',
-        у: 'u',
-        к: 'k',
-        е: 'e',
-        н: 'n',
-        г: 'g',
-        ш: 'sh',
-        щ: 'sch',
-        з: 'z',
-        х: 'h',
-        ъ: "'",
-        Ф: 'F',
-        Ы: 'I',
-        В: 'V',
-        А: 'a',
-        П: 'P',
-        Р: 'R',
-        О: 'O',
-        Л: 'L',
-        Д: 'D',
-        Ж: 'ZH',
-        Э: 'E',
-        ф: 'f',
-        ы: 'i',
-        в: 'v',
-        а: 'a',
-        п: 'p',
-        р: 'r',
-        о: 'o',
-        л: 'l',
-        д: 'd',
-        ж: 'zh',
-        э: 'e',
-        Я: 'Ya',
-        Ч: 'CH',
-        С: 'S',
-        М: 'M',
-        И: 'I',
-        Т: 'T',
-        Ь: "'",
-        Б: 'B',
-        Ю: 'YU',
-        я: 'ya',
-        ч: 'ch',
-        с: 's',
-        м: 'm',
-        и: 'i',
-        т: 't',
-        ь: "'",
-        б: 'b',
-        ю: 'yu',
-    };
-    return $.map(word.split(''), function (char) {
-        return a[char] || char;
-    }).join('');
-}
-
 function t_store_escapeQuote(text) {
     if (!text) {
         return '';
@@ -4688,6 +4960,7 @@ function t_store_product_detectEditionByControls(el_product, product) {
                 isCurEditionSelected = false;
             }
         }
+
         /* return current edition object, if all options values match the values from controls */
         if (isCurEditionSelected) {
             return curEdition;
@@ -4721,7 +4994,7 @@ function t_store_product_selectAvailableEdition(recid, product, el_product, opts
         return false;
     }
 
-    var isAvailable = parseInt(edition.quantity, 10) !== 0;
+    var isAvailable = parseInt(edition.quantity, 10) > 0 || edition.quantity === '';
 
     /* change controls */
     product.editionOptions.forEach(function (curOption) {
@@ -4738,7 +5011,9 @@ function t_store_product_selectAvailableEdition(recid, product, el_product, opts
                 var el_input = $(this).find('.t-product__option-input');
 
                 if (el_input.val() === value) {
-                    el_input.prop('checked', true).click();
+                    setTimeout(function() {
+                        el_input.prop('checked', true).click();
+                    });
                     $(this).addClass('t-product__option-item_active');
                 } else {
                     el_input.prop('checked', false);
@@ -4753,21 +5028,28 @@ function t_store_product_selectAvailableEdition(recid, product, el_product, opts
 }
 
 function t_store_product_disableUnavailOpts(el_product, product) {
+    /* get values of all selectboxes before the changed one */
+    var optsValsBeforeChangedArr = [];
+
+    if (product.editionOptions.length > 0) {
+        /* push first edition too */
+        optsValsBeforeChangedArr.push(product.editionOptions[0]);
+    }
+
     /* iterate via all edition controls, except the first one */
     for (var i = 1; i < product.editionOptions.length; i++) {
         var curOpt = product.editionOptions[i];
         var el_curOpt = t_store_product_getEditionSelectEl(el_product, curOpt);
-        /* get previous control value */
-        var prevOpt = product.editionOptions[i - 1];
-        var el_prevOpt = t_store_product_getEditionSelectEl(el_product, prevOpt);
-        var prevVal = el_prevOpt.find('.js-product-edition-option-variants').val() || '';
+
+        optsValsBeforeChangedArr.push(curOpt);
+
         /* disable current control values,
-        which doesnt have a common edition with previous control value */
+        which doesn't have a common edition with previous controls values */
         curOpt.values.forEach(function (curOptVal) {
-            var hasEdition = t_store_product_disableUnavailOpts_checkEdtn(product, curOpt, curOptVal, prevOpt, prevVal);
+            var hasEdition = t_store_product_getFirstAvailableEditionData_forCertainVals(product.editions, optsValsBeforeChangedArr, el_product, curOptVal);
 
             var el_optionTag = el_curOpt.find('option[value="' + curOptVal + '"]');
-            var el_custom_input = el_product.find('.t-product__option-input[value="' + curOptVal + '"]');
+            var el_custom_input = el_curOpt.find('.t-product__option-input[value="' + curOptVal + '"]'); /* TODO: fix same values */
 
             if (hasEdition) {
                 el_optionTag.removeAttr('disabled');
@@ -4811,7 +5093,7 @@ function t_store_product_updateEdition(recid, el_product, edition, product, opts
         $('.js-store-product').attr('data-product-img', edition.img);
 
         /* If edition was passed as URL param, update hidden select only */
-        $('.js-product-edition-option').each(function(){
+        $('[data-product-uid="' + edition.uid + '"] .js-product-edition-option').each(function(){
             var name = $(this).attr('data-edition-option-id');
             if (edition[name]) {
                 var value = edition[name];
@@ -4844,7 +5126,7 @@ function t_store_product_updateEdition(recid, el_product, edition, product, opts
         if (product.portion > 0) {
             var str = '<div class="t-store__prod__price-portion">/';
             if (product.portion !== '1') {
-                str +=  + product.portion + ' ';
+                str += + product.portion + ' ';
             }
             str += t_store_dict(product.unit) + '</div>';
             el_product.find('.t-store__card__price-currency + .js-product-price, .js-product-price + .t-store__card__price-currency').after(str);
@@ -5149,8 +5431,8 @@ function t_store_product_getFirstAvailableEditionData(editions) {
     return editions[0];
 }
 
-function t_store_product_getFirstAvailableEditionData_forCertainVals(editions, optsValsBeforeChangedArr, el_product) {
-    var firstUnavailable = '';
+function t_store_product_getFirstAvailableEditionData_forCertainVals(editions, optsValsBeforeChangedArr, el_product, curVal) {
+    var firstAvailable = '';
     /* iterate editions and return first available with chosen options */
     for (var i = 0; i < editions.length; i++) {
         var curEdition = editions[i];
@@ -5158,9 +5440,15 @@ function t_store_product_getFirstAvailableEditionData_forCertainVals(editions, o
 
         /* check if edition contain checked options */
         for (var j = 0; j < optsValsBeforeChangedArr.length; j++) {
-            var optName = optsValsBeforeChangedArr[j].name;
-            var optVal = t_store_product_getCurEditionOptValByName(el_product, optName);
-            if (curEdition[optName] !== optVal) {
+            var name = optsValsBeforeChangedArr[j].name;
+            var id = optsValsBeforeChangedArr[j].id;
+            var val = t_store_product_getCurEditionOptValById(el_product, id);
+
+            if (curVal !== undefined && j === optsValsBeforeChangedArr.length-1) {
+                val = curVal;
+            }
+
+            if (curEdition[name] !== val) {
                 doesContainSelectedOpts = false;
                 break;
             }
@@ -5169,37 +5457,13 @@ function t_store_product_getFirstAvailableEditionData_forCertainVals(editions, o
         if (doesContainSelectedOpts) {
             if (parseInt(curEdition.quantity, 10) !== 0) {
                 return curEdition;
-            } else if (!firstUnavailable) {
-                firstUnavailable = curEdition;
+            } else if (!firstAvailable) {
+                firstAvailable = curEdition;
             }
         }
     }
-    return firstUnavailable;
-}
 
-// eslint-disable-next-line no-unused-vars
-function t_store_product_disableUnavailOpts_getValsComb(el_product, product, checkingOptName, checkingOptVal) {
-    var combination = {};
-    for (var i = 0; i < product.editionOptions.length; i++) {
-        var curOption = product.editionOptions[i];
-        var el_select = t_store_product_getEditionSelectEl(el_product, curOption);
-        var controlVal = el_select.find('.js-product-edition-option-variants').val();
-        combination[curOption.name] = curOption.name === checkingOptName ? checkingOptVal : controlVal;
-    }
-    return combination;
-}
-
-function t_store_product_disableUnavailOpts_checkEdtn(product, curOpt, curOptVal, prevOpt, prevVal) {
-    var hasEdition = false;
-    /* check, if we have edition, which has both values: previous and the checking one */
-    for (var i = 0; i < product.editions.length; i++) {
-        var edition = product.editions[i];
-        if (edition[prevOpt.name] === prevVal && edition[curOpt.name] === curOptVal) {
-            hasEdition = true;
-            break;
-        }
-    }
-    return hasEdition;
+    return firstAvailable;
 }
 
 function t_store_product_getEditionOptionsArr_getValues(prop, editions) {
@@ -5214,6 +5478,7 @@ function t_store_product_getEditionOptionsArr_getValues(prop, editions) {
     });
 
     values = t_store_product_sortValues(values);
+
     return values;
 }
 
@@ -5360,7 +5625,7 @@ function t_store_product_getEditionOptionsArr_getImgValues(prop, editions) {
     return values;
 }
 
-function t_store_product_getCurEditionOptValByName(el_product, id) {
+function t_store_product_getCurEditionOptValById(el_product, id) {
     var el_optionsWrap = el_product.find('.js-product-edition-option[data-edition-option-id="' + id + '"]');
     return el_optionsWrap.find('.js-product-edition-option-variants').val() || '';
 }
@@ -5370,8 +5635,7 @@ function t_store_product_getEditionSelectEl(wrapper, curOption) {
 }
 
 function t_store_combineOptionIdByName(text) {
-    // eslint-disable-next-line no-useless-escape
-    return text.replace(/[\/\\'"<>{}]/g, '');
+    return text.replace(/[/\\'"<>{}]/g, '');
 }
 
 function t_store_getProductFirstImg(product) {
@@ -5435,12 +5699,12 @@ function t_store__getFormattedPrice(opts, price) {
 
 function t_store__getFormattedPriceRange(opts, product) {
     // Important: return null if user selected to draw product variants UI in product card
-    if (!opts.hasOwnProperty('prodCard')
+    if (!Object.prototype.hasOwnProperty.call(opts, 'prodCard')
         || opts.prodCard.showOpts
         || !opts.price.priceRange
         || opts.price.priceRange == ''
-        || !product.hasOwnProperty('minPrice')
-        || !product.hasOwnProperty('maxPrice')) {
+        || !Object.prototype.hasOwnProperty.call(product, 'minPrice')
+        || !Object.prototype.hasOwnProperty.call(product, 'maxPrice')) {
         return null;
     }
 
@@ -5451,6 +5715,18 @@ function t_store__getFormattedPriceRange(opts, product) {
         minPrice = t_store__getFormattedPrice(opts, minPrice);
         maxPrice = t_store__getFormattedPrice(opts, maxPrice);
         var priceRangeDesign = opts.price.priceRange;
+
+        if (opts.currencyTxt) {
+            if (opts.currencySide === 'l') {
+                minPrice = opts.currencyTxt + minPrice;
+            } else if (opts.currencySide === 'r') {
+                if (priceRangeDesign === 'range') {
+                    maxPrice = maxPrice + ' ' + opts.currencyTxt;
+                } else if (priceRangeDesign === 'from') {
+                    minPrice = minPrice + ' ' + opts.currencyTxt;
+                }
+            }
+        }
 
         if (priceRangeDesign === 'range') {
             return minPrice + '&mdash;' + maxPrice;
@@ -5552,10 +5828,17 @@ function t_store_filters_drawControls(recid, opts, data) {
     }
 
     str += '    </div>';
-    str += '    <div class="t-store__filter__chosen-bar" style="display: none;">';
-    str += '    ' + t_store_filters_opts_chosenVals_getHtml();
-    str += '    ' + t_store_filters_prodsNumber_getHtml();
-    str += '    </div>';
+
+    // Place chosen filters bar in a proper place in DOM
+    var choseBarStr = '';
+    choseBarStr += '    <div class="t-store__filter__chosen-bar" style="display: none;">';
+    choseBarStr += '    ' + t_store_filters_opts_chosenVals_getHtml();
+    choseBarStr += '    ' + t_store_filters_prodsNumber_getHtml();
+    choseBarStr += '    </div>';
+
+    if (!opts.sidebar) {
+        str += choseBarStr;
+    }
     str += '</div>';
 
     var el_rec = $('#rec' + recid);
@@ -5563,6 +5846,7 @@ function t_store_filters_drawControls(recid, opts, data) {
     el_rec.find('.js-store-filter').remove();
 
     if (opts.sidebar) {
+        el_filterWrapper.append(choseBarStr);
         el_filterWrapper.find('.t951__sidebar-wrapper').append(str);
     } else {
         el_filterWrapper.append(str);
@@ -6864,7 +7148,7 @@ function t_store_filters_price_countDecimals(valuesArr) {
             decimals = numberAsString.split('.')[1].length;
         }
 
-        if (decimals > result)  {
+        if (decimals > result) {
             result = decimals;
         }
     }
@@ -6967,6 +7251,7 @@ function t_store_filters_scrollStickyBar(el_rec) {
     }, 200);
 }
 
+/* Used in the tpl only */
 // eslint-disable-next-line no-unused-vars
 function t_store_oneProduct_init(recid, opts) {
     var el_prod = $('#rec' + recid + ' .js-store-product_single');
@@ -7228,7 +7513,7 @@ function t_store_paramsToObj(recid, opts) {
     }
     var params = paramsString.slice(1).split('&');
 
-    params = params.map(function(param) {
+    params = params.map(function(param) { /* TODO: replace to for */
         return param.replace(/%26amp/g, '&amp;');
     });
 
@@ -7588,7 +7873,7 @@ function t_store_filters_opts_sort(opts, recid) {
             var el_controls = $(this).find('.t-store__filter__custom-sel');
             // Pass all filter values to customSort
             var filterValues = [];
-            el_controls.each(function(i, control) {
+            el_controls.each(function() {
                 var value = $(this).attr('data-filter-value');
                 filterValues.push(value);
             });
@@ -7765,58 +8050,119 @@ function t_store_option_checkIfCustom(curOption) {
     return false;
 }
 
-function t_store_tabs_handleOnChange(recid, opts, el_product, tabsData) {
-    var isSnippet = $.contains($('#allrecords')[0], $('.t-store__product-snippet')[0]);
-    var el_rec = $('#rec' + recid);
-    var el_wrapper = isSnippet
-        ? el_rec.find('.js-product .t-container')
-        : el_rec.find('.t-popup .js-product');
-    var tabs = el_product.find('.js-store-tabs');
+function t_store_tabs_handleOnChange(recid, el_product) {
+    var tabs = el_product.find('.t-store__tabs');
     var design = tabs.attr('data-tab-design');
     var isAccordion = design === 'accordion';
 
     var buttons = el_product.find('.js-store-tab-button');
     buttons.off('click');
     buttons.on('click', function() {
-        var title = $(this).closest('.t-store__tabs__item').attr('data-tab-title');
+        var title = $(this).attr('data-tab-title');
+        var el_list = tabs.find('.t-store__tabs__list');
 
-        if (isAccordion) {
+        // Tabs
+        if (!isAccordion) {
+            el_list.find('.t-store__tabs__item').each(function() {
+                var curTitle = $(this).attr('data-tab-title');
+
+                if (curTitle === title) {
+                    $(this).addClass('t-store__tabs__item_active');
+                    $(this).find('.t-store__tabs__content').css('opacity', 0);
+                    $(this).find('.t-store__tabs__content').show();
+                    setTimeout(function() {
+                        t_store_tabs_animateHeight(tabs);
+                    }, 0);
+                } else {
+                    $(this).removeClass('t-store__tabs__item_active');
+                    $(this).find('.t-store__tabs__content').hide();
+                }
+            });
+
+            // Update active state for buttons
+            var isActive = $(this).hasClass('t-store__tabs__button_active');
+            var el_controls = $(this).closest('.t-store__tabs__controls');
+            if (isActive || !el_controls.length) {
+                return;
+            }
+
+            el_controls.find('.t-store__tabs__button').each(function() {
+                var curTitle = $(this).attr('data-tab-title');
+
+                if (curTitle === title) {
+                    $(this).addClass('t-store__tabs__button_active');
+                } else {
+                    $(this).removeClass('t-store__tabs__button_active');
+                }
+            });
+        // Accordion
+        } else {
             var el_tab = $(this).parent();
             el_tab.find('.t-store__tabs__content').slideToggle(300);
+            el_tab.find('.t-store__tabs__item-button').toggleClass('t-store__tabs__item-button_active');
             el_tab.toggleClass('t-store__tabs__item_active');
 
-            el_product.find('.t-store__tabs__item').each(function() {
+            el_list.find('.t-store__tabs__item').each(function() {
                 var curTitle = $(this).attr('data-tab-title');
+                var el_content = $(this).find('.t-store__tabs__content');
+                var el_button = $(this).find('.t-store__tabs__item-button');
                 var isActive = $(this).hasClass('t-store__tabs__item_active');
 
                 if (curTitle !== title && isActive) {
-                    $(this).find('.t-store__tabs__content').slideToggle(300);
+                    el_content.slideToggle(300);
                     $(this).toggleClass('t-store__tabs__item_active');
+                    el_button.toggleClass('t-store__tabs__item-button_active');
                 }
             });
-        } else {
-            var tab = null;
-
-            for (var key in tabsData) {
-                var curTab = tabsData[key];
-                if (title === curTab.title) {
-                    tab = curTab;
-                    break;
-                }
-            }
-
-            var content = t_store_drawProdPopup_getSingleTabData(tab, el_wrapper);
-
-            if (content) {
-                tabs.find('.t-store__tabs__content').html(content);
-            }
-
-            el_product.find('.t-store__tabs__item').removeClass('t-store__tabs__item_active');
-            $(this).closest('.t-store__tabs__item').addClass('t-store__tabs__item_active');
         }
 
         tabs.attr('data-active-tab', title);
     });
+
+    if (!isAccordion) {
+        var el_controls = tabs.find('.t-store__tabs__controls');
+        t_store_tabs_handleFade(el_controls);
+        el_controls.on('scroll', function() {
+            t_store_tabs_handleFade($(this));
+        });
+    }
+}
+
+function t_store_tabs_animateHeight(el_container) {
+    var heightnow = el_container.height();
+    var heightfull = el_container.css({height:'auto'}).height();
+
+    el_container.find('.t-store__tabs__content').css('opacity', 1);
+
+    el_container.css({ height: heightnow }).animate({
+        height: heightfull
+    }, 500);
+}
+
+function t_store_tabs_handleFade(el_controls) {
+    var el_wrapper = el_controls.parent();
+
+    if ($(window).width() < 560) {
+        var TRIGGER_DISTANCE = 10;
+        var width = el_controls.width();
+        var scrollLeft = el_controls.scrollLeft();
+        var scrollWidth = el_controls[0].scrollWidth;
+
+        if (scrollLeft > TRIGGER_DISTANCE) {
+            el_wrapper.addClass('t-store__tabs__controls-wrap_left');
+        } else {
+            el_wrapper.removeClass('t-store__tabs__controls-wrap_left');
+        }
+
+        if (scrollWidth - width > scrollLeft + TRIGGER_DISTANCE) {
+            el_wrapper.addClass('t-store__tabs__controls-wrap_right');
+        } else {
+            el_wrapper.removeClass('t-store__tabs__controls-wrap_right');
+        }
+    } else {
+        el_wrapper.removeClass('t-store__tabs__controls-wrap_left');
+        el_wrapper.removeClass('t-store__tabs__controls-wrap_right');
+    }
 }
 
 function t_store_option_handleOnChange_custom(recid, element, opts) {
@@ -7841,7 +8187,13 @@ function t_store_option_handleOnChange_custom(recid, element, opts) {
             if (el_input.val() !== value) {
                 el_input.prop('checked', false);
                 var el_upd_input = el_custom_ui.find('.t-product__option-input[value="' + value + '"]');
-                el_upd_input.prop('checked', true).click();
+                setTimeout(function() {
+                    el_upd_input.prop('checked', true).click();
+                });
+
+                el_active_option.removeClass('t-product__option-item_active');
+                el_upd_input.parent().addClass('t-product__option-item_active');
+
                 setTimeout(function() {
                     t_store_unifyCardsHeights(recid, opts);
                     if (opts.verticalAlignButtons) {
@@ -7869,6 +8221,7 @@ function t_store_option_handleOnChange_custom(recid, element, opts) {
                 el_select_hidden.val(value).change();
                 el_option.removeClass('t-product__option-item_active');
                 $(this).parent().addClass('t-product__option-item_active');
+
                 setTimeout(function() {
                     t_store_unifyCardsHeights(recid, opts);
                     if (opts.verticalAlignButtons) {
@@ -7953,313 +8306,14 @@ function t_store_unescapeHtml(str) {
     return $('<div />').html(str).text();
 }
 
-window.t_userAgentParser = {
-    userAgent: window.navigator.userAgent,
-    getIOSMajorVersion: function () {
-        var key = 'iPhone OS';
-        try {
-            var keyIndex = this.userAgent.search(key);
-            if (keyIndex !== -1) {
-                var keyValueIndex = keyIndex + key.length + 1;
-                var partUaAfterKey = this.userAgent.slice(keyValueIndex);
-                var keyValue = partUaAfterKey.match(/(\d{1,3}_\d{1,3}(_\d{1,3})?)/);
-                var majorVersionInt = parseInt(keyValue[0], 10);
-                return majorVersionInt;
-            } else {
-                return null;
-            }
-        } catch (e) {
-            // eslint-disable-next-line no-console
-            console.log('error in userAgentParser > getIOSMajorVersion' + e.message);
-        }
-    },
-    isIOSMobileChrome: function () {
-        return navigator.userAgent.match('CriOS') ? true : false;
-    },
-    getIEVersion: function () {
-        try {
-            var rv = -1; // Return value assumes failure.
-
-            if (navigator.appName == 'Microsoft Internet Explorer') {
-                var ua = navigator.userAgent,
-                    re = new RegExp('MSIE ([0-9]{1,}[\\.0-9]{0,})');
-
-                if (re.exec(ua) !== null) {
-                    rv = parseFloat(RegExp.$1);
-                }
-            } else if (navigator.appName == 'Netscape') {
-                /// in IE 11 the navigator.appVersion says 'trident'
-                /// in Edge the navigator.appVersion does not say trident
-                if (navigator.appVersion.indexOf('Trident') === -1) rv = 12;
-                else rv = 11;
-            }
-
-            return rv;
-        } catch (e) {
-            // eslint-disable-next-line no-console
-            console.log('error in userAgentParser > getIEVersion' + e.message);
-        }
-    },
-};
-
-// polyfill for URLSearchParams
-// from https://unpkg.com/@ungap/url-search-params@0.1.4/min.js
-if (window.t_userAgentParser.getIEVersion() <= 11 || (window.isiOS === true && (window.isiOSVersion[0] < 10 || window.isiOSVersion[0] == 10 && window.isiOSVersion[1] < 3))) {
-    // eslint-disable-next-line
-    var self = this || {};
-    try {
-        !(function (t, e) {
-            if (
-                new t('q=%2B').get('q') !== e ||
-                new t({ q: e }).get('q') !== e ||
-                new t([['q', e]]).get('q') !== e ||
-                'q=%0A' !== new t('q=\n').toString() ||
-                'q=+%26' !== new t({ q: ' &' }).toString() ||
-                'q=%25zx' !== new t({ q: '%zx' }).toString()
-            )
-                throw t;
-            self.URLSearchParams = t;
-        })(URLSearchParams, '+');
-    } catch (t) {
-        !(function (t, a, o) {
-            'use strict';
-            var u = t.create,
-                h = t.defineProperty,
-                // eslint-disable-next-line no-useless-escape
-                e = /[!'\(\)~]|%20|%00/g,
-                n = /%(?![0-9a-fA-F]{2})/g,
-                r = /\+/g,
-                i = { '!': '%21', "'": '%27', '(': '%28', ')': '%29', '~': '%7E', '%20': '+', '%00': '\0' },
-                s = {
-                    append: function (t, e) {
-                        p(this._ungap, t, e);
-                    },
-                    delete: function (t) {
-                        delete this._ungap[t];
-                    },
-                    get: function (t) {
-                        return this.has(t) ? this._ungap[t][0] : null;
-                    },
-                    getAll: function (t) {
-                        return this.has(t) ? this._ungap[t].slice(0) : [];
-                    },
-                    has: function (t) {
-                        return t in this._ungap;
-                    },
-                    set: function (t, e) {
-                        this._ungap[t] = [a(e)];
-                    },
-                    forEach: function (e, n) {
-                        var r = this;
-                        for (var i in r._ungap) r._ungap[i].forEach(t, i);
-                        function t(t) {
-                            e.call(n, t, a(i), r);
-                        }
-                    },
-                    toJSON: function () {
-                        return {};
-                    },
-                    toString: function () {
-                        var t = [];
-                        for (var e in this._ungap) for (var n = v(e), r = 0, i = this._ungap[e]; r < i.length; r++) t.push(n + '=' + v(i[r]));
-                        return t.join('&');
-                    },
-                };
-            for (var c in s) h(f.prototype, c, { configurable: !0, writable: !0, value: s[c] });
-            function f(t) {
-                var e = u(null);
-                switch ((h(this, '_ungap', { value: e }), !0)) {
-                    case !t:
-                        break;
-                    case 'string' == typeof t:
-                        '?' === t.charAt(0) && (t = t.slice(1));
-                        for (var n = t.split('&'), r = 0, i = n.length; r < i; r++) {
-                            var a = (s = n[r]).indexOf('=');
-                            -1 < a ? p(e, g(s.slice(0, a)), g(s.slice(a + 1))) : s.length && p(e, g(s), '');
-                        }
-                        break;
-                    case o(t):
-                        for (r = 0, i = t.length; r < i; r++) {
-                            var s;
-                            p(e, (s = t[r])[0], s[1]);
-                        }
-                        break;
-                    case 'forEach' in t:
-                        t.forEach(l, e);
-                        break;
-                    default:
-                        for (var c in t) p(e, c, t[c]);
-                }
-            }
-            function l(t, e) {
-                p(this, e, t);
-            }
-            function p(t, e, n) {
-                var r = o(n) ? n.join(',') : n;
-                e in t ? t[e].push(r) : (t[e] = [r]);
-            }
-            function g(t) {
-                return decodeURIComponent(t.replace(n, '%25').replace(r, ' '));
-            }
-            function v(t) {
-                return encodeURIComponent(t).replace(e, d);
-            }
-            function d(t) {
-                return i[t];
-            }
-            self.URLSearchParams = f;
-        })(Object, String, Array.isArray);
-    }
-    !(function (d) {
-        var r = !1;
-        try {
-            // eslint-disable-next-line no-undef
-            r = !!Symbol.iterator;
-        } catch (t) {
-            //
-        }
-        function t(t, e) {
-            var n = [];
-            return (
-                t.forEach(e, n),
-                r
-                    ? // eslint-disable-next-line no-undef
-                      n[Symbol.iterator]()
-                    : {
-                          next: function () {
-                              var t = n.shift();
-                              return { done: void 0 === t, value: t };
-                          },
-                      }
-            );
-        }
-        'forEach' in d ||
-            (d.forEach = function (n, r) {
-                var i = this,
-                    t = Object.create(null);
-                this.toString()
-                    .replace(/=[\s\S]*?(?:&|$)/g, '=')
-                    .split('=')
-                    .forEach(function (e) {
-                        !e.length ||
-                            e in t ||
-                            (t[e] = i.getAll(e)).forEach(function (t) {
-                                n.call(r, t, e, i);
-                            });
-                    });
-            }),
-            'keys' in d ||
-                (d.keys = function () {
-                    return t(this, function (t, e) {
-                        this.push(e);
-                    });
-                }),
-            'values' in d ||
-                (d.values = function () {
-                    // eslint-disable-next-line no-unused-vars
-                    return t(this, function (t, e) {
-                        this.push(t);
-                    });
-                }),
-            'entries' in d ||
-                (d.entries = function () {
-                    return t(this, function (t, e) {
-                        this.push([e, t]);
-                    });
-                }),
-            // eslint-disable-next-line no-undef
-            !r || Symbol.iterator in d || (d[Symbol.iterator] = d.entries),
-            'sort' in d ||
-                (d.sort = function () {
-                    for (var t, e, n, r = this.entries(), i = r.next(), a = i.done, s = [], c = Object.create(null); !a; )
-                        (e = (n = i.value)[0]), s.push(e), e in c || (c[e] = []), c[e].push(n[1]), (a = (i = r.next()).done);
-                    for (s.sort(), t = 0; t < s.length; t++) this.delete(s[t]);
-                    for (t = 0; t < s.length; t++) (e = s[t]), this.append(e, c[e].shift());
-                }),
-            (function (f) {
-                function l(t) {
-                    var e = t.append;
-                    (t.append = d.append), URLSearchParams.call(t, t._usp.search.slice(1)), (t.append = e);
-                }
-                function p(t, e) {
-                    if (!(t instanceof e)) throw new TypeError("'searchParams' accessed on an object that does not implement interface " + e.name);
-                }
-                function t(e) {
-                    var n,
-                        r,
-                        i,
-                        t = e.prototype,
-                        a = v(t, 'searchParams'),
-                        s = v(t, 'href'),
-                        c = v(t, 'search');
-                    function o(t, e) {
-                        d.append.call(this, t, e), (t = this.toString()), i.set.call(this._usp, t ? '?' + t : '');
-                    }
-                    function u(t) {
-                        d.delete.call(this, t), (t = this.toString()), i.set.call(this._usp, t ? '?' + t : '');
-                    }
-                    function h(t, e) {
-                        d.set.call(this, t, e), (t = this.toString()), i.set.call(this._usp, t ? '?' + t : '');
-                    }
-                    !a &&
-                        c &&
-                        c.set &&
-                        ((i = c),
-                        (r = function (t, e) {
-                            return (t.append = o), (t.delete = u), (t.set = h), g(t, '_usp', { configurable: !0, writable: !0, value: e });
-                        }),
-                        (n = function (t, e) {
-                            return g(t, '_searchParams', { configurable: !0, writable: !0, value: r(e, t) }), e;
-                        }),
-                        f.defineProperties(t, {
-                            href: {
-                                get: function () {
-                                    return s.get.call(this);
-                                },
-                                set: function (t) {
-                                    var e = this._searchParams;
-                                    s.set.call(this, t), e && l(e);
-                                },
-                            },
-                            search: {
-                                get: function () {
-                                    return c.get.call(this);
-                                },
-                                set: function (t) {
-                                    var e = this._searchParams;
-                                    c.set.call(this, t), e && l(e);
-                                },
-                            },
-                            searchParams: {
-                                get: function () {
-                                    return p(this, e), this._searchParams || n(this, new URLSearchParams(this.search.slice(1)));
-                                },
-                                set: function (t) {
-                                    p(this, e), n(this, t);
-                                },
-                            },
-                        }));
-                }
-                var g = f.defineProperty,
-                    v = f.getOwnPropertyDescriptor;
-                try {
-                    t(HTMLAnchorElement), /^function|object$/.test(typeof URL) && URL.prototype && t(URL);
-                } catch (t) {
-                    //
-                }
-            })(Object);
-    })(self.URLSearchParams.prototype, Object);
-}
-
 // polyfill for Object.assign
 // from https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign
-
-if (window.t_userAgentParser.getIEVersion() <= 11) {
+window.isIE = !!document.documentMode;
+if (window.isIE) {
     if (typeof Object.assign !== 'function') {
         // Must be writable: true, enumerable: false, configurable: true
         Object.defineProperty(Object, 'assign', {
-            // eslint-disable-next-line no-unused-vars
-            value: function assign(target, varArgs) {
+            value: function assign(target) {
                 // .length of function is 2
                 'use strict';
                 if (target === null || target === undefined) {
@@ -8289,8 +8343,7 @@ if (window.t_userAgentParser.getIEVersion() <= 11) {
 }
 
 function t_store_filters_priceRange_checkIfAllowed() {
-    var isIE = !!document.documentMode;
-    return !isIE;
+    return !window.isIE;
 }
 
 function t_store_onFuncLoad(funcName, okFunc, time) {
