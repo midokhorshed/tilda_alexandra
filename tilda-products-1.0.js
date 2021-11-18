@@ -15,7 +15,8 @@ function t_prod__initProduct(recid,el_prod){
 
 function t_prod__initPrice (recid,el_prod) {
 	var el_price=el_prod.find('.js-product-price');
-	if (el_price.length){
+	if (el_price.length) {
+		/* */
 	} else {
 		el_prod.append("<div style='display:none;' class='js-product-price'></div>");
 		var el_price=el_prod.find('.js-product-price');
@@ -84,7 +85,7 @@ function t_prod__cleanPrice(price){
 	}else{
 		price = price.toString();
 		price = price.replace(',','.');
-		price = price.replace(/[^0-9\.]/g,'');
+		price = price.replace(/[^0-9.]/g,'');
 		price = parseFloat(price).toFixed(2);
 		if(isNaN(price))price=0;
 		price = parseFloat(price);
