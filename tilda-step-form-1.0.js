@@ -1,19 +1,11 @@
 // Add style in site
 function t_form__addStyleSteps() {
-    var styleEls = document.head.querySelectorAll('style');
+    if (document.getElementById('tilda-step-form-style')) return;
+
     var cssCode = '.t-form__screen .t-form__screen-wrapper {display: block;}.t-form__screen .t-form__submit {position: relative;}.t-form__screen .t-form__submit::before, .t-form__screen .t-form__submit::after {content: "";display: table;}.t-form__screen .t-form__submit::after {clear: both;}.t-form__screen .t-form__screen-btn-prev, .t-form__screen .t-form__screen-btn-next {position: relative;display: -webkit-inline-box;display: -ms-inline-flexbox;display: inline-flex;-webkit-box-align: center;-ms-flex-align: center;align-items: center;}.t-form__screen .t-form__screen-btn-prev {display: none;float: left;-webkit-transform: translate3d(0, 0, 0);transform: translate3d(0, 0, 0);}.t-form__screen .t-form__screen-btn-next {float: right;-webkit-transform: translate3d(0, 0, 0);transform: translate3d(0, 0, 0);}.t-form__screen .t-form__screen-btn-prev::before, .t-form__screen .t-form__screen-btn-next::after {display: -webkit-inline-box;display: -ms-inline-flexbox;display: inline-block;font-family: Arial,Helvetica,sans-serif;font-size: 18px;}.t-form__screen .t-form__screen-btn-prev::before {content:"←";margin-right: 5px;}.t-form__screen .t-form__screen-btn-next::after {content:"→";margin-left: 5px;}.t-form__screen .t-submit {float: right;width: auto;height: 45px;font-size: 14px;padding-left: 30px;padding-right: 30px;}.t-form__screen .t-form__screen-number-container {display: inline-block;vertical-align: middle;margin-right: 6px;}.t-form__screen .t-form__screen-current-view {position: absolute;top: 50%;left: 50%;font-size: 12px;-webkit-transform: translate(-50%,-50%);-ms-transform: translate(-50%,-50%);transform: translate(-50%,-50%);}.t-form__screen .t-form__screen-number-container {margin-left: 3px;color: #000000;}.t-form__screen .t-form__screen-number-container span {opacity: 0.3;}.t-form__screen .t-form__screen-number-container span:nth-child(2) {padding-left: 3px;padding-right: 3px;}.t-form__screen .t-form__screen-progress {display: inline-block;vertical-align: middle;}.t-form__screen .t-form__screen-progress circle {stroke-dashoffset: 62.8319;-webkit-transition: stroke-dashoffset 0.5s linear;-o-transition: stroke-dashoffset 0.5s linear;transition: stroke-dashoffset 0.5s linear;stroke-width: 2px;}.t-form__screen .t-form__screen-progress-circle {stroke: #000000;opacity: 0.3;}.t-form__screen .t-form__screen-progress-bar {stroke: #003cff;stroke-width: 3px;}.t-form__screen .t-form__screen-btn-prev,.t-form__screen .t-form__screen-btn-next {outline: none;}@media screen and (max-width: 480px) {.t-form__screen .t-form__submit {text-align: center;}.t-form__screen .t-form__screen-btn-prev,.t-form__screen .t-form__screen-btn-next,.t-form__screen .t-submit {float: none;vertical-align: middle;margin: 3px 0;}.t-form__screen .t-form__screen-btn-prev {margin-right: 10px;padding-left: 20px;}.t-form__screen .t-form__screen-btn-next {padding-right: 20px;}.t-form__screen .t-form__screen-btn-prev td::before, .t-form__screen .t-form__screen-btn-next td::after {display: none;}.t-form__screen .t-form__screen-current-view {position: relative;top: 0;-webkit-transform: none;-ms-transform: none;transform: none;-webkit-transform: translateX(-50%);-ms-transform: translateX(-50%);transform: translateX(-50%);margin-top: 15px;}.t-form__screen .t-form__screen-number-container {margin-left: 0;}}.example {display: -ms-grid;display: grid;-webkit-transition: all .5s;-o-transition: all .5s;transition: all .5s;-webkit-user-select: none;-moz-user-select: none;-ms-user-select: none;user-select: none;background: -webkit-gradient(linear, left top, left bottom, from(white), to(black));background: -o-linear-gradient(top, white, black);background: linear-gradient(to bottom, white, black);}';
-    var cssFlag = true;
+    var styleString = '<style id="tilda-step-form-style">'+ cssCode +'</style>';
 
-    Array.prototype.forEach.call(styleEls, function(element) {
-        if (element.textContent === cssCode) {
-            cssFlag = false;
-        }
-    });
-
-    if (cssFlag) {
-        var styleString = '<style>'+ cssCode +'</style>';
-        document.head.insertAdjacentHTML('beforeend', styleString);
-    }
+    document.head.insertAdjacentHTML('beforeend', styleString);
 }
 
 t_form__addStyleSteps();
