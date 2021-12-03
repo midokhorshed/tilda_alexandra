@@ -3,7 +3,7 @@ function t_form__addStyleSteps() {
     if (document.getElementById('tilda-step-form-style')) return;
 
     var cssCode = '.t-form__screen .t-form__screen-wrapper {display: block;}.t-form__screen .t-form__submit {position: relative;}.t-form__screen .t-form__submit::before, .t-form__screen .t-form__submit::after {content: "";display: table;}.t-form__screen .t-form__submit::after {clear: both;}.t-form__screen .t-form__screen-btn-prev, .t-form__screen .t-form__screen-btn-next {position: relative;display: -webkit-inline-box;display: -ms-inline-flexbox;display: inline-flex;-webkit-box-align: center;-ms-flex-align: center;align-items: center;}.t-form__screen .t-form__screen-btn-prev {display: none;float: left;-webkit-transform: translate3d(0, 0, 0);transform: translate3d(0, 0, 0);}.t-form__screen .t-form__screen-btn-next {float: right;-webkit-transform: translate3d(0, 0, 0);transform: translate3d(0, 0, 0);}.t-form__screen .t-form__screen-btn-prev::before, .t-form__screen .t-form__screen-btn-next::after {display: -webkit-inline-box;display: -ms-inline-flexbox;display: inline-block;font-family: Arial,Helvetica,sans-serif;font-size: 18px;}.t-form__screen .t-form__screen-btn-prev::before {content:"←";margin-right: 5px;}.t-form__screen .t-form__screen-btn-next::after {content:"→";margin-left: 5px;}.t-form__screen .t-submit {float: right;width: auto;height: 45px;font-size: 14px;padding-left: 30px;padding-right: 30px;}.t-form__screen .t-form__screen-number-container {display: inline-block;vertical-align: middle;margin-right: 6px;}.t-form__screen .t-form__screen-current-view {position: absolute;top: 50%;left: 50%;font-size: 12px;-webkit-transform: translate(-50%,-50%);-ms-transform: translate(-50%,-50%);transform: translate(-50%,-50%);}.t-form__screen .t-form__screen-number-container {margin-left: 3px;color: #000000;}.t-form__screen .t-form__screen-number-container span {opacity: 0.3;}.t-form__screen .t-form__screen-number-container span:nth-child(2) {padding-left: 3px;padding-right: 3px;}.t-form__screen .t-form__screen-progress {display: inline-block;vertical-align: middle;}.t-form__screen .t-form__screen-progress circle {stroke-dashoffset: 62.8319;-webkit-transition: stroke-dashoffset 0.5s linear;-o-transition: stroke-dashoffset 0.5s linear;transition: stroke-dashoffset 0.5s linear;stroke-width: 2px;}.t-form__screen .t-form__screen-progress-circle {stroke: #000000;opacity: 0.3;}.t-form__screen .t-form__screen-progress-bar {stroke: #003cff;stroke-width: 3px;}.t-form__screen .t-form__screen-btn-prev,.t-form__screen .t-form__screen-btn-next {outline: none;}@media screen and (max-width: 480px) {.t-form__screen .t-form__submit {text-align: center;}.t-form__screen .t-form__screen-btn-prev,.t-form__screen .t-form__screen-btn-next,.t-form__screen .t-submit {float: none;vertical-align: middle;margin: 3px 0;}.t-form__screen .t-form__screen-btn-prev {margin-right: 10px;padding-left: 20px;}.t-form__screen .t-form__screen-btn-next {padding-right: 20px;}.t-form__screen .t-form__screen-btn-prev td::before, .t-form__screen .t-form__screen-btn-next td::after {display: none;}.t-form__screen .t-form__screen-current-view {position: relative;top: 0;-webkit-transform: none;-ms-transform: none;transform: none;-webkit-transform: translateX(-50%);-ms-transform: translateX(-50%);transform: translateX(-50%);margin-top: 15px;}.t-form__screen .t-form__screen-number-container {margin-left: 0;}}.example {display: -ms-grid;display: grid;-webkit-transition: all .5s;-o-transition: all .5s;transition: all .5s;-webkit-user-select: none;-moz-user-select: none;-ms-user-select: none;user-select: none;background: -webkit-gradient(linear, left top, left bottom, from(white), to(black));background: -o-linear-gradient(top, white, black);background: linear-gradient(to bottom, white, black);}';
-    var styleString = '<style id="tilda-step-form-style">'+ cssCode +'</style>';
+    var styleString = '<style id="tilda-step-form-style">' + cssCode + '</style>';
 
     document.head.insertAdjacentHTML('beforeend', styleString);
 }
@@ -13,7 +13,7 @@ t_form__addStyleSteps();
 // Main init fn
 // eslint-disable-next-line
 function t_form_splittingOnStep(recId) {
-    var rec = document.querySelector('#rec'+ recId);
+    var rec = document.querySelector('#rec' + recId);
     var form = rec.querySelector('.t-form');
     var inputGroups = form.querySelectorAll('.t-input-group.t-input-group_st');
     var inputsbox = rec.querySelector('.t-form__inputsbox');
@@ -91,7 +91,7 @@ function t_form_splittingOnStep(recId) {
         var wrapper = t_form__createInputWrapper();
         var list = [];
 
-        Array.prototype.forEach.call(inputGroups, function(input) {
+        Array.prototype.forEach.call(inputGroups, function (input) {
             if (!input.classList.contains('t-input-group_st')) {
                 wrapper.appendChild(input);
             } else {
@@ -103,7 +103,7 @@ function t_form_splittingOnStep(recId) {
 
         list.push(wrapper);
 
-        Array.prototype.forEach.call(list, function(element, index) {
+        Array.prototype.forEach.call(list, function (element, index) {
             inputsbox.insertBefore(element, inputsbox.childNodes[index]);
         });
     }
@@ -236,7 +236,7 @@ function t_form_splittingOnStep(recId) {
 
         prevBtn.addEventListener('click', t_form__prevBtn);
         nextBtn.addEventListener('click', t_form__nextBtn);
-        Array.prototype.forEach.call(formScreen, function(screen) {
+        Array.prototype.forEach.call(formScreen, function (screen) {
             screen.addEventListener('keypress', t_form__keypress);
         });
         window.addEventListener('resize', throttleResize);
@@ -254,7 +254,9 @@ function t_form_splittingOnStep(recId) {
             popup.scrollTop = topCoordinateForm;
         } else {
             topCoordinateForm = rec.querySelector('.t-form__screen').getBoundingClientRect().top + window.pageYOffset - 150;
-            window.scrollTo(0, topCoordinateForm);
+            if (topCoordinateForm < window.scrollY) {
+                window.scrollTo(0, topCoordinateForm);
+            }
         }
     }
 
@@ -281,8 +283,8 @@ function t_form_splittingOnStep(recId) {
         var currentWrapperHeight = 0;
         var wrapperHeight = 0;
 
-        Array.prototype.forEach.call(formScreen, function(element, ind) {
-            if(element.style.display === 'block') {
+        Array.prototype.forEach.call(formScreen, function (element, ind) {
+            if (element.style.display === 'block') {
                 if (ind + index < formScreen.length) {
                     formScreen[ind + index].style.display = 'block';
                     currentWrapperHeight = formScreen[ind + index].offsetHeight;
