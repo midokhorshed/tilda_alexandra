@@ -1,81 +1,81 @@
 /* eslint-disable-next-line no-unused-vars */
 function t_appendGoogleMap(recid, key) {
-	var grecid = recid;
 	if (typeof google === 'object' && typeof google.maps === 'object') {
-		t_handleGoogleApiReady(grecid);
-	} else if (window.googleapiiscalled !== true) {
-		var runfunc = 'window.t_handleGoogleApiReady_' + grecid + ' = function () { t_handleGoogleApiReady("' + grecid + '") }';
+		t_handleGoogleApiReady(recid);
+	} else if (!window.googleapiiscalled) {
+		var runfunc = 'window.t_handleGoogleApiReady_' + recid + ' = function () { t_handleGoogleApiReady("' + recid + '") }';
 		eval(runfunc);
 
-		var addParams = '',
-			maplang = '';
-		maplang = $('#rec' + recid).find('.t-map').data('map-language');
-		if (maplang > '' && maplang.length == 2) {
-			addParams = '&language=' + maplang;
+		var langPreferences = '';
+		var mapLang = '';
+		var tildaMapElement = document.querySelector('#rec' + recid + ' .t-map');
+		var tildaMapElLang = tildaMapElement.getAttribute('data-map-language');
+		if (tildaMapElement) {
+			mapLang = tildaMapElLang || '';
+		}
+		if (mapLang && mapLang.length === 2) {
+			langPreferences = '&language=' + mapLang;
 		}
 
 		var script = document.createElement('script');
 		script.type = 'text/javascript';
-		script.src = 'https://maps.google.com/maps/api/js?key=' + jQuery.trim(key) + '&callback=t_handleGoogleApiReady_' + grecid + addParams;
+		if (key) {
+			script.src = 'https://maps.google.com/maps/api/js?key=' + key.trim() + '&callback=t_handleGoogleApiReady_' + recid + langPreferences;
+		}
 		document.body.appendChild(script);
 		window.googleapiiscalled = true;
 	} else {
 		setTimeout(function () {
-			t_appendGoogleMap(grecid, key);
+			t_appendGoogleMap(recid, key);
 		}, 1000);
 	}
 }
 
 function t_handleGoogleApiReady(recid) {
-	$('#rec' + recid).find('.t-map').each(function (index, Element) {
-		var el = $(Element);
+	var gmaps = document.querySelectorAll('#rec' + recid + ' .t-map');
+	if (!gmaps.length) return false;
+	Array.prototype.forEach.call(gmaps, function (gmap) {
 		var arMarkers = window['arMapMarkers' + recid];
 		var mapstyle = '[]';
-		window.isDragMap = window.isMobile ? false : true;
-
-		if (el.attr('data-map-style') != '') {
-			mapstyle = eval(el.attr('data-map-style'));
+		window.isDragMap = !window.isMobile;
+		var mapStyleAttr = gmap.getAttribute('data-map-style');
+		if (mapStyleAttr) {
+			mapstyle = eval(mapStyleAttr);
 		}
+		var mapZoomAttr = gmap.getAttribute('data-map-zoom');
 		var myLatLng = arMarkers.length > 0 ? new google.maps.LatLng(parseFloat(arMarkers[0].lat), parseFloat(arMarkers[0].lng)) : false;
 		var myOptions = {
-			zoom: parseInt(el.attr('data-map-zoom'), 10),
+			zoom: parseInt(mapZoomAttr, 10),
 			center: myLatLng,
 			scrollwheel: false,
 			gestureHandling: 'cooperative',
-			/* draggable: window.isDragMap, */
 			zoomControl: true,
 			styles: mapstyle
 		};
-
-		var map = new google.maps.Map(Element, myOptions);
-
-		var i, mrk, marker, markers = [];
+		var map = new google.maps.Map(gmap, myOptions);
 		var bounds = new google.maps.LatLngBounds();
-		for (i in arMarkers) {
-			mrk = arMarkers[i];
-			myLatLng = new google.maps.LatLng(parseFloat(mrk.lat), parseFloat(mrk.lng));
+		var marker;
+		Array.prototype.forEach.call(arMarkers, function (el) {
+			myLatLng = new google.maps.LatLng(parseFloat(el.lat), parseFloat(el.lng));
 			marker = new google.maps.Marker({
 				position: myLatLng,
 				map: map,
-				title: mrk.title
+				title: el.title
 			});
 			bounds.extend(myLatLng);
-
-			if (mrk.descr > '') {
-				attachInfoMessage(marker, mrk.descr);
+			if (el.descr) {
+				t_map__attachInfoMessage(marker, el.descr);
 			} else {
-				attachInfoMessage(marker, mrk.title);
+				t_map__attachInfoMessage(marker, el.title);
 			}
+		});
 
-			markers[markers.length] = marker;
-			marker = '';
-		}
-
-		function attachInfoMessage(marker, descr) {
+		function t_map__attachInfoMessage(marker, descr) {
+			var textarea = document.createElement('textarea');
+			textarea.innerHTML = descr;
 			var infowindow = new google.maps.InfoWindow({
-				content: $('<textarea/>').html(descr).text()
+				content: textarea.textContent
 			});
-
 			marker.addListener('click', function () {
 				infowindow.open(marker.get('map'), marker);
 			});
@@ -84,8 +84,8 @@ function t_handleGoogleApiReady(recid) {
 		if (arMarkers.length > 1) {
 			map.fitBounds(bounds);
 			var listener = google.maps.event.addListener(map, 'idle', function () {
-				if (map.getZoom() > parseInt(el.attr('data-map-zoom'), 10) || map.getZoom() == 0) {
-					map.setZoom(parseInt(el.attr('data-map-zoom')), 10);
+				if (map.getZoom() > parseInt(mapZoomAttr, 10) || map.getZoom() === 0) {
+					map.setZoom(parseInt(mapZoomAttr, 10));
 				}
 				if (map.getZoom() > 16) {
 					map.setZoom(16);
@@ -97,24 +97,21 @@ function t_handleGoogleApiReady(recid) {
 		/* Resizing the map for responsive design */
 		google.maps.event.addDomListener(window, 'resize', function () {
 			var center = map.getCenter();
-			var zoom = parseInt(el.attr('data-map-zoom'), 10);
+			var zoom = parseInt(mapZoomAttr, 10);
 			google.maps.event.trigger(map, 'resize');
 			map.setCenter(center);
-
 			if (arMarkers.length > 0) {
 				map.fitBounds(bounds);
 				if (zoom > 0 && (map.getZoom() > zoom || map.getZoom() == 0)) {
 					map.setZoom(zoom);
 				}
 			}
-
 		});
 
-		el.on('displayChanged', function () {
+		gmap.addEventListener('displayChanged', function () {
 			google.maps.event.trigger(map, 'resize');
 		});
-
-		el.on('sizechange', function () {
+		gmap.addEventListener('sizechange', function () {
 			google.maps.event.trigger(map, 'resize');
 		});
 	});
@@ -122,56 +119,58 @@ function t_handleGoogleApiReady(recid) {
 
 /* eslint-disable-next-line no-unused-vars */
 function t_appendYandexMap(recid, key) {
-	var yarecid = recid;
 	if (typeof ymaps === 'object' && typeof ymaps.Map === 'function') {
 		t_handleYandexApiReady(recid);
-	} else if (window.yandexmapsapiiscalled !== true) {
-		var runfunc = 'window.t_handleYandexApiReady_' + yarecid + ' = function () { return t_handleYandexApiReady("' + yarecid + '") }';
+	} else if (!window.yandexmapsapiiscalled) {
+		var runfunc = 'window.t_handleYandexApiReady_' + recid + ' = function () { return t_handleYandexApiReady("' + recid + '") }';
 		eval(runfunc);
 
-		var maplang;
-		maplang = $('#rec' + recid).find('.t-map').data('map-language');
-		if (maplang && maplang == 'EN') {
-			maplang = 'en_US';
-		} else {
-			maplang = 'ru_RU';
+		var mapLang = '';
+
+		var tildaMapElement = document.querySelector('#rec' + recid + ' .t-map');
+		var tildaMapElAttr = tildaMapElement.getAttribute('data-map-language');
+		if (tildaMapElement) {
+			switch (tildaMapElAttr) {
+				case 'EN':
+					mapLang = 'en_US';
+					break;
+				default:
+					mapLang = 'ru_RU';
+			}
 		}
 
 		var script = document.createElement('script');
 		script.type = 'text/javascript';
-		script.src = 'https://api-maps.yandex.ru/2.1/?lang=' + maplang + '&coordorder=latlong&onload=t_handleYandexApiReady_' + yarecid;
-		if (key > '') {
-			script.src = script.src + '&apikey=' + key;
+		script.src = 'https://api-maps.yandex.ru/2.1/?lang=' + mapLang + '&coordorder=latlong&onload=t_handleYandexApiReady_' + recid;
+		if (key) {
+			script.src += '&apikey=' + key;
 		}
 		document.body.appendChild(script);
 		window.yandexmapsapiiscalled = true;
 	} else {
 		setTimeout(function () {
-			t_appendYandexMap(yarecid, key);
+			t_appendYandexMap(recid, key);
 		}, 1000);
 	}
 }
 
 function t_handleYandexApiReady(recid) {
-
-	$('#rec' + recid).find('.t-map').each(function (index, Element) {
-		var el = $(Element);
+	var ymapsArr = document.querySelectorAll('#rec' + recid + ' .t-map');
+	if (!ymapsArr.length) return false;
+	Array.prototype.forEach.call(ymapsArr, function (ymap) {
 		var arMarkers = window['arMapMarkers' + recid];
-		window.isDragMap = window.isMobile ? false : true;
-
-		var myLatlng = arMarkers.length > 0 ? [parseFloat(arMarkers[0].lat), parseFloat(arMarkers[0].lng)] : false;
-		var myStates = {
-			zoom: parseInt(el.attr('data-map-zoom'), 10),
-			center: myLatlng,
+		var mapZoomAttr = ymap.getAttribute('data-map-zoom');
+		window.isDragMap = !window.isMobile;
+		var myLatLng = arMarkers.length > 0 ? [parseFloat(arMarkers[0].lat), parseFloat(arMarkers[0].lng)] : false;
+		var myOptions = {
+			zoom: parseInt(mapZoomAttr, 10),
+			center: myLatLng,
 			scrollZoom: false,
 			controls: ['typeSelector', 'zoomControl'],
 			drag: window.isDragMap
 		};
-
-		var map = new ymaps.Map(Element, myStates),
-			i, mrk;
+		var map = new ymaps.Map(ymap, myOptions);
 		var myGroup = new ymaps.GeoObjectCollection({});
-
 		var eventsPane = map.panes.get('events');
 		var eventsPaneEl = eventsPane.getElement();
 
@@ -206,11 +205,12 @@ function t_handleYandexApiReady(recid) {
 			touchAction: 'auto'
 		};
 
-		Object.keys(mobilePanelStyles).forEach(function (name) {
+		Array.prototype.forEach.call(Object.keys(mobilePanelStyles), function (name) {
 			eventsPaneEl.style[name] = mobilePanelStyles[name];
 		});
 
 		map.behaviors.disable('scrollZoom');
+
 		if (window.isMobile) {
 			map.behaviors.disable('drag');
 
@@ -222,31 +222,34 @@ function t_handleYandexApiReady(recid) {
 					eventsPaneEl.style.opacity = '1';
 				}
 			});
-
 			ymaps.domEvent.manager.add(eventsPaneEl, 'touchend', function () {
 				eventsPaneEl.style.transition = 'opacity .8s';
 				eventsPaneEl.style.opacity = '0';
 			});
 		}
 
-		for (i in arMarkers) {
-			mrk = arMarkers[i];
-			myLatlng = [parseFloat(mrk.lat), parseFloat(mrk.lng)];
-
+		Array.prototype.forEach.call(arMarkers, function (marker) {
+			var myLatlng = [parseFloat(marker.lat), parseFloat(marker.lng)];
+			var textarea = document.createElement('textarea');
+			textarea.innerHTML = marker.descr;
 			myGroup.add(new ymaps.Placemark(myLatlng, {
-				hintContent: mrk.title,
-				balloonContent: mrk.descr > '' ? $('<textarea/>').html(mrk.descr).text() : mrk.title
+				hintContent: marker.title,
+				balloonContent: marker.descr ? textarea.textContent : marker.title
 			}));
-		}
+		});
 		map.geoObjects.add(myGroup);
 
-		var zoom = parseInt(el.attr('data-map-zoom'), 10);
+		var zoom = parseInt(mapZoomAttr, 10);
 		if (arMarkers.length > 1) {
 			map.setBounds(myGroup.getBounds(), {
-				checkZoomRange: true
-			}).done(function () {
-				if (zoom > 0 && (map.getZoom() == 0 || map.getZoom() > zoom)) {
-					map.setZoom(zoom);
+				checkZoomRange: true,
+				callback: function (err) {
+					if (err) {
+						return;
+					}
+					if (zoom > 0 && (map.getZoom() == 0 || map.getZoom() > zoom)) {
+						map.setZoom(zoom);
+					}
 				}
 			});
 		} else if (zoom > 0 && (map.getZoom() == 0 || map.getZoom() > zoom)) {
@@ -258,10 +261,14 @@ function t_handleYandexApiReady(recid) {
 
 			if (arMarkers.length > 1) {
 				map.setBounds(myGroup.getBounds(), {
-					checkZoomRange: true
-				}).done(function () {
-					if (zoom > 0 && (map.getZoom() == 0 || map.getZoom() > zoom)) {
-						map.setZoom(zoom);
+					checkZoomRange: true,
+					callback: function (err) {
+						if (err) {
+							return;
+						}
+						if (zoom > 0 && (map.getZoom() == 0 || map.getZoom() > zoom)) {
+							map.setZoom(zoom);
+						}
 					}
 				});
 			} else if (zoom > 0 && (map.getZoom() == 0 || map.getZoom() > zoom)) {
