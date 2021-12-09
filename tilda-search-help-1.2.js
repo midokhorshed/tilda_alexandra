@@ -101,6 +101,9 @@ function t_searchHelp__init() {
             searchInput.insertAdjacentHTML('afterend', '<img width="18px" class="t-site-search-close" src="' + close_svg + '" />');
             searchInput.addEventListener('input', function (e) {
                 t_searchHelp__oninput(e.target);
+                if (e.target.value.length < 3) {
+                    t_searchHelp__searchDMClose();
+                }
             });
             searchInput.addEventListener('click', function (e) {
                 t_searchHelp__oninput(e.target);
