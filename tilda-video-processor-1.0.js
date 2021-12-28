@@ -1,19 +1,15 @@
 /**
- * @VideoBG function preserve Copyright 2011 Syd Lawrence ( www.sydlawrence.com ). Version: 0.2
- * Licensed under MIT and GPLv2.
+ * tilda-video-processor use in blocks, which can be placed video into their cover (CR...)
  */
-
-(function ($) {
-    var def = $.Deferred();
+(function () {
     window.processYoutubeVideo = function (div, height) {
         load_youtube_api();
 
         var defFunc = function () {
-            var el = $(div);
-            var src = el.attr('data-content-video-url-youtube');
-            var nomute = el.attr('data-content-video-nomute');
-            var noloop = el.attr('data-content-video-noloop');
-            var nocover = el.attr('data-content-video-nocover');
+            var src = div.getAttribute('data-content-video-url-youtube');
+            var nomute = div.getAttribute('data-content-video-nomute');
+            var noloop = div.getAttribute('data-content-video-noloop');
+            var nocover = div.getAttribute('data-content-video-nocover');
 
             var iframe = document.createElement('iframe');
             iframe.src = processSrc(src, nocover, nomute);
@@ -22,7 +18,8 @@
 
             var playtimer;
             div.appendChild(iframe);
-            if (!window.isMobile) {
+            if (!window.isMobile && typeof YT !== 'undefined') {
+                // eslint-disable-next-line no-undef
                 new YT.Player(iframe, {
                     events: {
                         onReady: function (e) {
@@ -40,10 +37,11 @@
                             if (e.data === -1) {
                                 var sp = window.fix_scrolltop_beforestop_youtube;
                                 if (sp >= 0) {
-                                    $('html, body').scrollTop(sp);
+                                    window.scrollTo(0, sp);
                                     delete window.fix_scrolltop_beforestop_youtube;
                                 }
                             }
+                            // eslint-disable-next-line no-undef
                             if (e.data === YT.PlayerState.PLAYING) {
                                 playtimer = window.setInterval(function () {
                                     var a = e.target.getCurrentTime();
@@ -64,209 +62,234 @@
                 });
             }
 
-            setWidthHeightYoutubeVideo(el, height);
+            setWidthHeightYoutubeVideo(div, height);
         };
-        def.then(defFunc);
+
+        t_onFuncLoad(window.onYouTubeIframeAPIReady, defFunc);
     };
 
     window.onYouTubeIframeAPIReady = function () {
-        def.resolve();
+        if (typeof YT !== 'undefined') {
+            return true;
+        }
     };
 
-    $.fn.videoBG = function (selector, options) {
-        var options = {};
-        if (typeof selector == 'object') {
-            options = $.extend({}, $.fn.videoBG.defaults, selector);
-        } else if (!selector) {
-            options = $.fn.videoBG.defaults;
-        } else {
-            return $(selector).videoBG(options);
+    var t_videoProcessor__extend = function (out) {
+        out = out || {};
+
+        for (var i = 1; i < arguments.length; i++) {
+            if (!arguments[i])
+                continue;
+
+            for (var key in arguments[i]) {
+                // eslint-disable-next-line no-prototype-builtins
+                if (arguments[i].hasOwnProperty(key))
+                    out[key] = arguments[i][key];
+            }
         }
 
-        var container = $(this);
+        return out;
+    };
 
-        /* check if elements available otherwise it will cause issues*/
-        if (!container.length) {
+    window.videoBG = function (selector, options) {
+
+        var options = {};
+        if (typeof selector == 'object') {
+            options = t_videoProcessor__extend({}, window.videoBG.defaults, selector);
+        } else if (!selector) {
+            options = window.videoBG.defaults;
+        } else {
+            return selector.videoBG(options);
+        }
+
+        var container = this;
+
+        // check if elements available otherwise it will cause issues
+        if (!container) {
             return;
         }
 
-        /* container to be at least relative*/
-        if (container.css('position') == 'static' || !container.css('position')) {
-            container.css('position', 'relative');
+        // container to be at least relative
+        if (container.style.position === 'static' || !container.style.position) {
+            container.style.position = 'relative';
         }
 
-        /* we need a width*/
+        // get width
         if (options.width == 0) {
-            options.width = container.width();
+            options.width = container.offsetWidth;
         }
 
-        /* we need a height*/
+        // get height
         if (options.height == 0) {
-            options.height = container.height();
+            options.height = container.offsetHeight;
         }
 
-        /* get the wrapper*/
-        /*
-		var wrap = $.fn.videoBG.wrapper();
-		wrap.height(options.height)
-			.width(options.width);
-		*/
-        /* if is a text replacement*/
+        // get the wrapper
+
+        // var wrap = window.videoBG.wrapper();
+        // wrap.height(options.height)
+        //     .width(options.width);
+
+        // if is a text replacement
         if (options.textReplacement) {
-            /* force sizes*/
+            // force sizes
             options.scale = true;
 
-            /* set sizes and forcing text out*/
-            container.width(options.width).height(options.height).css('text-indent', '-9999px');
+            // set sizes and forcing text out
+            container.style.width = options.width + 'px';
+            container.style.height = options.height + 'px';
+            container.style.textIndent = '-9999px';
         } else {
-            /* set the wrapper above the video*/
-            /*
-			wrap.css('z-index',options.zIndex+1);
-			*/
+            // set the wrapper above the video
+            //wrap.css('z-index',options.zIndex+1);
         }
 
-        /* move the contents into the wrapper
-		// commented by n.o
-		//wrap.html(container.clone(true));*/
+        // move the contents into the wrapper
+        // commented by n.o
+        // wrap.html(container.clone(true));
 
-        /* get the video*/
-        var video = $.fn.videoBG.video(options);
+        // get the video
+        var video = window.videoBG.video(options);
 
-        /* if we are forcing width / height */
+        // if we are forcing width / height
         if (options.scale) {
-            /* overlay wrapper*/
-            /*
-			wrap.height(options.height)
-				.width(options.width);
-			*/
+            // overlay wrapper
+            // wrap.height(options.height)
+            //     .width(options.width);
 
-            /* video*/
-            video.height(options.height).width(options.width);
+            // video
+            video.style.height = options.height + 'px';
+            video.style.width = options.width + 'px';
         }
 
-        /* add it all to the container*/
-        /*
-		container.html(wrap);
-		*/
-        container.append(video);
+        // add it all to the container
+        // container.html(wrap);
+        container.insertAdjacentElement('beforeend', video);
 
-        if (typeof container.attr('data-content-video-nomute') === 'undefined') {
-            container.find('video').prop('muted', 'true');
+        if (container.getAttribute('data-content-video-nomute')) {
+            var videoBlock = container.querySelector('video');
+            if (videoBlock) {
+                videoBlock.setAttribute('muted', 'true');
+            }
         }
 
-        setWidthHeightHTMLVideo(video, options.height);
+        setWidthHeightHTMLVideo(video, options.height + 'px');
 
-        return video.find('video')[0];
+        return video.querySelector('video');
     };
 
-    /* set to fullscreen*/
-    $.fn.videoBG.setFullscreen = function ($el) {
-        var windowWidth = $(window).width(),
-            windowHeight = $(window).height();
+    // set to fullscreen
+    window.videoBG.setFullscreen = function (el) {
+        var windowWidth = window.innerWidth;
+        var windowHeight = window.innerHeight;
 
-        $el.css('min-height', 0).css('min-width', 0);
-        $el.parent().width(windowWidth).height(windowHeight);
-        /* if by width */
-        if (windowWidth / windowHeight > $el.aspectRatio) {
-            $el.width(windowWidth).height('auto');
+        el.style.minHeight = 0;
+        el.style.minWidth = 0;
+        if (el.parentNode) {
+            el.parentNode.style.width = windowWidth + 'px';
+            el.parentNode.style.height = windowHeight + 'px';
+        }
+        // if by width
+        if (windowWidth / windowHeight > el.aspectRatio) {
+            el.style.width = windowWidth + 'px';
+            el.style.height = 'auto';
             /* shift the element up*/
-            var height = $el.height();
+            var height = el.offsetHeight;
             var shift = (height - windowHeight) / 2;
             if (shift < 0) {
                 shift = 0;
             }
-            $el.css('top', -shift);
+            el.style.top = -shift + 'px';
         } else {
-            $el.width('auto').height(windowHeight);
-            /* shift the element left*/
-            var width = $el.width();
+            el.style.width = 'auto';
+            el.style.height = windowHeight + 'px';
+            // shift the element left
+            var width = el.offsetWidth;
             var shift = (width - windowWidth) / 2;
             if (shift < 0) {
                 shift = 0;
             }
-            $el.css('left', -shift);
+            el.style.left = -shift + 'px';
 
-            /* this is a hack mainly due to the iphone*/
+            // this is a hack mainly due to the iphone
             if (shift === 0) {
                 setTimeout(function () {
-                    $.fn.videoBG.setFullscreen($el);
+                    window.videoBG.setFullscreen(el);
                 }, 500);
             }
         }
 
-        $('body > .videoBG_wrapper').width(windowWidth).height(windowHeight);
+        var videoBgWrapper = document.querySelectorAll('body > .videoBG_wrapper');
+        Array.prototype.forEach.call(videoBgWrapper, function (videoBg) {
+            videoBg.style.width = windowWidth + 'px';
+            videoBg.style.height = windowHeight + 'px';
+        });
     };
 
-    /* get the formatted video element*/
-    $.fn.videoBG.video = function (options) {
-        /*commented by n.o*/
-        /*$('html, body').scrollTop(-1);*/
+    // get the formatted video element
+    window.videoBG.video = function (options) {
+        // commented by n.o
+        // $('html, body').scrollTop(-1);
 
-        /* video container*/
-        var $div = $('<div/>');
-        $div.addClass('videoBG')
-            .css('position', options.position)
-            .css('z-index', options.zIndex)
-            .css('top', 0)
-            .css('left', 0)
-            .css('height', options.height)
-            .css('width', options.width)
-            .css('opacity', options.opacity)
-            .css('overflow', 'hidden');
-
-        /* video element*/
-        var $video = $('<video/>');
-        $video
-            .css('position', 'relative')
-            .css('z-index', options.zIndex)
-            .attr('poster', options.poster)
-            .css('top', 0)
-            .css('left', 0)
-            .css('min-width', '100%')
-            .css('min-height', '100%');
-
-        $video.prop('autoplay', options.autoplay);
-        $video.prop('loop', options.loop);
-        $video.prop('muted', options.muted);
+        // video container
+        var div = document.createElement('div');
+        div.classList.add('videoBG');
+        div.style.position = options.position;
+        div.style.zIndex = options.zIndex;
+        div.style.top = 0;
+        div.style.left = 0;
+        div.style.height = options.height + 'px';
+        div.style.width = options.width + 'px';
+        div.style.opacity = options.opacity;
+        div.style.overflow = 'hidden';
+        // video element
+        var video = document.createElement('video');
+        video.style.position = 'relative';
+        video.style.zIndex = options.zIndex;
+        video.style.poster = options.poster;
+        video.style.top = 0;
+        video.style.left = 0;
+        video.style.minHeight = '100%';
+        video.style.minWidth = '100%';
+        video.setAttribute('autoplay', options.autoplay);
+        video.setAttribute('loop', options.loop);
+        video.setAttribute('muted', options.muted);
 
         if (options.volume > 0) {
-            $video.prop('volume', options.volume);
+            video.setAttribute('volume', options.volume);
         } else {
-            $video.prop('volume', 0);
+            video.setAttribute('volume', 0);
         }
 
-        /* if fullscreen*/
+        // if fullscreen
         if (options.fullscreen) {
-            $video.bind('canplay', function () {
-                /* set the aspect ratio*/
-                $video.aspectRatio = $video.width() / $video.height();
-                $.fn.videoBG.setFullscreen($video);
+            video.bind('canplay', function () {
+                // set the aspect ratio
+                video.aspectRatio = video.offsetWidth / video.offsetHeight;
+                window.videoBG.setFullscreen(video);
             });
 
-            /* listen out for screenresize*/
+            // listen out for screenresize
             var resizeTimeout;
-            $(window).resize(function () {
+            window.addEventListener('resize', function () {
                 clearTimeout(resizeTimeout);
                 resizeTimeout = setTimeout(function () {
-                    $.fn.videoBG.setFullscreen($video);
+                    window.videoBG.setFullscreen(video);
                 }, 100);
             });
-            $.fn.videoBG.setFullscreen($video);
+            window.videoBG.setFullscreen(video);
         }
 
-        /* video standard element*/
-        var v = $video[0];
-
-        /* if meant to loop*/
+        // if meant to loop
         if (options.loop) {
             var loops_left = options.loop;
 
-            /* cant use the loop attribute as firefox doesnt support it*/
-            $video.bind('ended', function () {
-                /* if we have some loops to throw*/
+            // cant use the loop attribute as firefox doesnt support it
+            video.bind('ended', function () {
+                // if we have some loops to throw
                 if (loops_left) {
-                    /* replay that bad boy*/
-                    v.play();
+                    // replay
+                    video.play();
                 }
 
                 /* if not forever*/
@@ -277,88 +300,94 @@
             });
         }
 
-        /* when can play, play*/
-        $video.bind('canplay', function () {
+        // when can play, play
+        video.bind('canplay', function () {
             if (options.autoplay) {
-                /* replay that bad boy*/
-                v.play();
+                // replay
+                video.play();
             }
         });
 
-        /* if supports video*/
-        if ($.fn.videoBG.supportsVideo()) {
-            /* supports webm*/
-            if ($.fn.videoBG.supportType('webm') && options.webm != '') {
-                /* play webm*/
-                $video.attr('src', options.webm);
-            } else if ($.fn.videoBG.supportType('mp4') && options.mp4 != '') {
-                /* supports mp4*/
-                /* play mp4*/
-                $video.attr('src', options.mp4);
+        // if supports video
+        if (window.videoBG.supportsVideo()) {
+            // supports webm
+            if (window.videoBG.supportType('webm') && options.webm != '') {
+                // play webm
+                video.setAttribute('src', options.webm);
+            } else if (window.videoBG.supportType('mp4') && options.mp4 != '') {
+                // supports mp4
+                // play mp4
+                video.setAttribute('src', options.mp4);
 
-                /*	$video.html('<source src="'.options.mp4.'" />');*/
+                // $video.html('<source src="'.options.mp4.'" />');
             } else {
-                /* throw ogv at it then*/
-                /* play ogv*/
-                $video.attr('src', options.ogv);
+                // throw ogv at it then
+                // play ogv
+                video.setAttribute('src', options.ogv);
             }
         }
 
-        /* image for those that dont support the video	*/
-        var $img = $('<img/>');
-        $img.attr('src', options.poster)
-            .css('position', 'absolute')
-            .css('z-index', options.zIndex)
-            .css('top', 0)
-            .css('left', 0)
-            .css('min-width', '100%')
-            .css('min-height', '100%');
+        // image for those that dont support the video
+        var img = document.createElement('img');
+        img.setAttribute('src', options.poster);
+        img.style.position = 'absolute';
+        img.style.zIndex = options.zIndex;
+        img.style.top = 0;
+        img.style.left = 0;
+        img.style.minHeight = '100%';
+        img.style.minWidth = '100%';
 
-        /* add the image to the video*/
-        /* if suuports video*/
-        if ($.fn.videoBG.supportsVideo()) {
-            /* add the video to the wrapper*/
-            $div.html($video);
+        // add the image to the video
+        // if suuports video
+        if (window.videoBG.supportsVideo()) {
+            // add the video to the wrapper
+            div.insertAdjacentElement('beforeend', video);
         } else {
-            /* nope - whoa old skool*/
-            /* add the image instead*/
-            $div.html($img);
+            // nope - whoa old skool
+            // add the image instead
+            div.insertAdjacentElement('beforeend', img);
         }
 
-        /* if text replacement*/
+        // if text replacement
         if (options.textReplacement) {
-            /* force the heights and widths*/
-            $div.css('min-height', 1).css('min-width', 1);
-            $video.css('min-height', 1).css('min-width', 1);
-            $img.css('min-height', 1).css('min-width', 1);
+            // force the heights and widths
+            div.style.minHeight = '1px';
+            div.style.minWidth = '1px';
+            video.style.minHeight = '1px';
+            video.style.minWidth = '1px';
+            img.style.minHeight = '1px';
+            img.style.minWidth = '1px';
 
-            $div.height(options.height).width(options.width);
-            $video.height(options.height).width(options.width);
-            $img.height(options.height).width(options.width);
+            div.style.height = options.height + 'px';
+            div.style.width = options.width + 'px';
+            video.style.height = options.height + 'px';
+            video.style.width = options.width + 'px';
+            img.style.height = options.height + 'px';
+            img.style.width = options.width + 'px';
         }
 
-        if ($.fn.videoBG.supportsVideo()) {
-            /*			v.play();*/
+        if (window.videoBG.supportsVideo()) {
+            // v.play();
         }
-        return $div;
+        return div;
     };
 
-    /* check if suuports video*/
-    $.fn.videoBG.supportsVideo = function () {
+    // check if supported video
+    window.videoBG.supportsVideo = function () {
         return document.createElement('video').canPlayType;
     };
 
-    /* check which type is supported*/
-    $.fn.videoBG.supportType = function (str) {
-        /* if not at all supported*/
-        if (!$.fn.videoBG.supportsVideo()) {
+    // check which type is supported
+    window.videoBG.supportType = function (str) {
+        // if not at all supported
+        if (!window.videoBG.supportsVideo()) {
             return false;
         }
 
-        /* create video*/
+        // create video
         var v = document.createElement('video');
 
-        /* check which?*/
+        // check which?
         switch (str) {
             case 'webm':
                 return v.canPlayType('video/webm; codecs="vp8, vorbis"');
@@ -371,15 +400,18 @@
         return false;
     };
 
-    /* get the overlay wrapper*/
-    $.fn.videoBG.wrapper = function () {
-        var $wrap = $('<div/>');
-        $wrap.addClass('videoBG_wrapper').css('position', 'absolute').css('top', 0).css('left', 0);
-        return $wrap;
+    // get the overlay wrapper
+    window.videoBG.wrapper = function () {
+        var wrap = document.createElement('div');
+        wrap.classList.add('videoBG_wrapper');
+        wrap.style.position = 'absolute';
+        wrap.style.top = 0;
+        wrap.style.left = 0;
+        return wrap;
     };
 
-    /* these are the defaults*/
-    $.fn.videoBG.defaults = {
+    // these are the defaults
+    window.videoBG.defaults = {
         mp4: '',
         ogv: '',
         webm: '',
@@ -396,36 +428,38 @@
         fullscreen: false,
         imgFallback: true,
     };
-})(jQuery);
+})();
 
+/**
+ * 
+ * @param {HTMLElement} video - current video
+ * @param {number} height - current video height
+ */
 function setWidthHeightHTMLVideo(video, height) {
     // eslint-disable-next-line no-console
-    console.log('setWidthHeightHTMLVideo:' + height);
+    // console.log('setWidthHeightHTMLVideo:' + height);
     var el = video.closest('.t-cover__carrier');
     height = height + '';
-    var iframe = el.find('video');
-    var nocover = el.attr('data-content-video-nocover');
-    var customratio = el.attr('data-content-video-ratio');
+    var iframe = el.querySelector('video');
+    var nocover = el.getAttribute('data-content-video-nocover');
+    var customratio = el.getAttribute('data-content-video-ratio');
     var video_ratio = 0.5625;
-    if (customratio > 0) video_ratio = parseFloat(customratio) * 1;
+    if (customratio && !isNaN(Number(customratio)) && Number(customratio) > 0) {
+        video_ratio = parseFloat(customratio);
+    }
 
     if (nocover != 'yes') {
         if (!height) {
             height = '100vh';
         }
-        if (height.indexOf('vh') > -1) {
+        if (height.indexOf('vh') !== -1) {
             var wh = window.innerHeight;
-            if (!wh) {
-                wh = $(window).height();
-            }
-            var div_height = Math.floor(wh * (parseInt(height) / 100));
+            var parsedHeight = parseInt(height) || 0;
+            var div_height = Math.floor(wh * (parsedHeight / 100));
         } else {
-            var div_height = parseInt(height);
+            var div_height = parseInt(height) || 0;
         }
-        var div_width = Math.floor(parseInt(window.innerWidth));
-        if (!div_width) {
-            div_width = $(window).width();
-        }
+        var div_width = window.innerWidth;
         var video_width = div_width;
         var video_height = video_width * video_ratio;
 
@@ -435,7 +469,7 @@ function setWidthHeightHTMLVideo(video, height) {
         var vh3 = video_height;
         var delta_coef = 1;
 
-        /* count delt_coef if video height less than div height*/
+        // count delt_coef if video height less than div height
         if (vh3 < div_height) {
             if (video_height < div_height) {
                 var delta_coef = div_height / video_height + 0.02;
@@ -450,37 +484,44 @@ function setWidthHeightHTMLVideo(video, height) {
         var heightDelta = zoom_video_height - div_height;
         var widthDelta = zoom_video_width - div_width;
 
-        iframe.height(zoom_video_height + 'px');
-        iframe.width(zoom_video_width + 'px');
-        video.height(zoom_video_height + 'px');
-        video.width(zoom_video_width + 'px');
+        iframe.style.height = zoom_video_height + 'px';
+        iframe.style.width = zoom_video_width + 'px';
+        video.style.height = zoom_video_height + 'px';
+        video.style.width = zoom_video_width + 'px';
 
         if (heightDelta > 0) {
-            iframe.css('margin-top', -Math.floor(heightDelta / 2) + 'px');
+            iframe.style.marginTop = -Math.floor(heightDelta / 2) + 'px';
         } else {
-            iframe.css('margin-top', 0);
+            iframe.style.marginTop = 0;
         }
         if (widthDelta > 0) {
-            iframe.css('margin-left', -Math.floor(widthDelta / 2) + 'px');
+            iframe.style.marginLeft = -Math.floor(widthDelta / 2) + 'px';
         } else {
-            iframe.css('margin-left', 0);
+            iframe.style.marginLeft = 0;
         }
     } else {
         var video_height;
         if (!height) {
-            video_height = Math.floor(el.width() * video_ratio);
+            video_height = Math.floor(el.offsetWidth * video_ratio);
         }
         if (height && height.indexOf('vh') > -1) {
-            video_height = Math.floor(window.innerHeight * (parseInt(height) / 100));
+            var parsedHeight = parseInt(height) || 0;
+            video_height = Math.floor(window.innerHeight * (parsedHeight / 100));
         } else if (height) {
-            video_height = parseInt(height);
+            video_height = parseInt(height) || 0;
         }
 
-        iframe.css('width', '100%');
-        iframe.height(video_height + 'px');
+        iframe.style.width = '100%';
+        iframe.style.height = video_height + 'px';
     }
 }
 
+/**
+ * @param {string} src - link to video
+ * @param {string} nocover - nocover param
+ * @param {string} nomute - nomute param
+ * @returns {string} - transformed src
+ */
 function processSrc(src, nocover, nomute) {
     if (src.indexOf('https://www.youtube.com/embed') === -1) {
         src = 'https://www.youtube.com/embed' + (src[0] === '/' ? src : '/' + src);
@@ -528,73 +569,84 @@ function processSrc(src, nocover, nomute) {
     return src;
 }
 
+/**
+ * @param {HTMLElement} div - created div element
+ * @param {object} player - current player
+ * @param {string} nomute - nomute param
+ */
 function onYouTubePlayerReady_do(div, player, nomute) {
-    var timer;
-    var wnd = $(window);
-    var frame = $(div);
-    var timer_count = 0;
-
-    wnd.scroll(function () {
-        if (timer) {
-            window.clearTimeout(timer);
-            if (timer_count >= 15) {
-                timer_player_do(frame, wnd, player, nomute);
-                timer_count = 0;
-            }
-            timer_count++;
-        }
-
-        timer = window.setTimeout(function () {
-            timer_player_do(frame, wnd, player, nomute);
-            timer_count = 0;
-        }, 100);
-    });
-
-    wnd.scroll();
+    window.addEventListener('scroll', t_videoProcessor__createEventOnScroll(div, player, nomute));
+    t_videoProcessor__createEventOnScroll(div, player, nomute);
 }
 
-function timer_player_do(frame, wnd, player, nomute) {
-    var a, b, c, d, s;
+/**
+ * @param {HTMLElement} div - created div element
+ * @param {object} player - current player
+ * @param {string} nomute - nomute param
+ */
+function t_videoProcessor__createEventOnScroll(div, player, nomute) {
+    var timer;
+    var timer_count = 0;
+    if (timer) {
+        window.clearTimeout(timer);
+        if (timer_count >= 15) {
+            timer_player_do(div, player, nomute);
+            timer_count = 0;
+        }
+        timer_count++;
+    }
+    timer = window.setTimeout(function () {
+        timer_player_do(div, player, nomute);
+        timer_count = 0;
+    }, 100);
+}
 
-    a = frame.offset().top;
-    b = frame.height();
+/**
+ * 
+ * @param {HTMLElement} frame - created div element
+ * @param {object} player - current player
+ * @param {string} nomute - nomute param
+ */
+function timer_player_do(frame, player, nomute) {
+    var frameOffsetTop = frame.getBoundingClientRect().top + window.pageYOffset;
+    var frameWidth = frame.offsetWidth;
+    var windowTopPos = window.pageYOffset;
+    var viewportHeight = window.innerHeight;
+    var playerState = player.getPlayerState();
 
-    c = wnd.scrollTop();
-    d = wnd.height();
-
-    s = player.getPlayerState();
-
-    if (c + d > a && c <= a + b) {
-        if (s !== 1) {
+    if (windowTopPos + viewportHeight > frameOffsetTop
+        && windowTopPos <= frameOffsetTop + frameWidth) {
+        if (playerState !== 1) {
             player.playVideo();
         }
         if (nomute == 'yes') {
-            if (c > a + b - 100) {
+            if (windowTopPos > frameOffsetTop + frameWidth - 100) {
                 player.setVolume(30);
-            } else if (c > a + b - 200) {
+            } else if (windowTopPos > frameOffsetTop + frameWidth - 200) {
                 player.setVolume(70);
-            } else if (c + d < a + 200) {
+            } else if (windowTopPos + viewportHeight < frameOffsetTop + 200) {
                 player.setVolume(30);
             } else {
                 player.setVolume(100);
             }
-        } else {
-            /* console.log("no"); */
         }
-    } else if (c + d < a && c + d > a - 500) {
-        if (s !== 2) {
+    } else if (windowTopPos + viewportHeight < frameOffsetTop && windowTopPos + viewportHeight > frameOffsetTop - 500) {
+        if (playerState !== 2) {
             player.playVideo();
             player.pauseVideo();
         }
-    } else if (c > a + b && c < a + b + 500) {
-        if (s !== 2) {
+    } else if (windowTopPos > frameOffsetTop + frameWidth && windowTopPos < frameOffsetTop + frameWidth + 500) {
+        if (playerState !== 2) {
             player.pauseVideo();
         }
-    } else if (s !== 2) {
+    } else if (playerState !== 2) {
         player.pauseVideo();
     }
 }
 
+/**
+ * load youtube api
+ */
 function load_youtube_api() {
     if (window.loadytapi_flag !== 'yes') {
         window.loadytapi_flag = 'yes';
@@ -605,36 +657,59 @@ function load_youtube_api() {
     }
 }
 
+/**
+ * emulate promise
+ * 
+ * @param {Function} funcName - if current function is function
+ * @param {Function} okFunc - do okFunc
+ * @param {number} time - duration
+ */
+function t_onFuncLoad(funcName, okFunc, time) {
+    if (typeof funcName === 'function') {
+        okFunc();
+    } else {
+        var startTime = Date.now();
+        setTimeout(function checkFuncExist() {
+            var currentTime = Date.now();
+            if (typeof funcName === 'function') {
+                okFunc();
+                return;
+            }
+            if (document.readyState === 'complete' && currentTime - startTime > 5000 && typeof funcName !== 'function') {
+                throw new Error(funcName + ' is undefined');
+            }
+            setTimeout(checkFuncExist, time || 100);
+        });
+    }
+}
+
+/**
+ * @param {HTMLElement} el - current element
+ * @param {number} height - height
+ */
 function setWidthHeightYoutubeVideo(el, height) {
-    // eslint-disable-next-line no-console
-    console.log('setWidthHeightYoutubeVideo:' + height);
-    // Для совместимости со скиптами переписанными на Vanilla JS
-	el = $(el);
-    var iframe = el.find('iframe');
-    var nocover = el.attr('data-content-video-nocover');
-    var noadcut = el.attr('data-content-video-noadcut-youtube');
-    var customratio = el.attr('data-content-video-ratio');
+    //TODO с video-processor взаимодействует скрипт tilda-cover, который на jquery, поэтому делаем проверку на элемент/nodeList
+    el = el instanceof HTMLElement ? el : el[0];
+    var iframe = el.querySelector('iframe');
+    var nocover = el.getAttribute('data-content-video-nocover');
+    var noadcut = el.getAttribute('data-content-video-noadcut-youtube');
+    var customratio = el.getAttribute('data-content-video-ratio');
 
     var video_ratio = 0.5625;
-    if (customratio > 0) video_ratio = parseFloat(customratio) * 1;
+    if (customratio && !isNaN(Number(customratio)) && customratio > 0) video_ratio = parseFloat(customratio);
 
     if (nocover != 'yes') {
         if (!height) {
             height = '100vh';
         }
-        if (height.indexOf('vh') > -1) {
+        if (height.indexOf('vh') !== -1) {
             var wh = window.innerHeight;
-            if (!wh) {
-                wh = $(window).height();
-            }
-            var div_height = Math.floor(wh * (parseInt(height) / 100));
+            var parsedHeight = parseInt(height) || 0;
+            var div_height = Math.floor(wh * (parsedHeight / 100));
         } else {
-            var div_height = parseInt(height);
+            var div_height = parseInt(height) || 0;
         }
-        var div_width = Math.floor(parseInt(window.innerWidth));
-        if (!div_width) {
-            div_width = $(window).width();
-        }
+        var div_width = window.innerWidth;
         var video_width = div_width;
         var video_height = video_width * video_ratio;
 
@@ -648,7 +723,7 @@ function setWidthHeightYoutubeVideo(el, height) {
             vh3 = video_height - 220;
         }
 
-        /* count delt_coef if video height less than div height*/
+        // count delt_coef if video height less than div height
         if (vh3 < div_height) {
             if (video_height < div_height) {
                 var delta_coef = div_height / video_height + 0.02;
@@ -663,35 +738,36 @@ function setWidthHeightYoutubeVideo(el, height) {
         var heightDelta = zoom_video_height - div_height;
         var widthDelta = zoom_video_width - div_width;
 
-        iframe.height(zoom_video_height + 'px');
-        iframe.width(zoom_video_width + 'px');
+        iframe.style.height = zoom_video_height + 'px';
+        iframe.style.width = zoom_video_width + 'px';
 
         if (heightDelta > 0) {
-            iframe.css('margin-top', -Math.floor(heightDelta / 2) + 'px');
+            iframe.style.marginTop = -Math.floor(heightDelta / 2) + 'px';
         }
         if (widthDelta > 0) {
-            iframe.css('margin-left', -Math.floor(widthDelta / 2) + 'px');
+            iframe.style.marginLeft = -Math.floor(widthDelta / 2) + 'px';
         }
     } else {
         var video_height;
         if (!height) {
-            video_height = Math.floor(el.width() * video_ratio);
+            video_height = Math.floor(el.offsetWidth * video_ratio);
         }
         if (height && height.indexOf('vh') > -1) {
-            video_height = Math.floor(window.innerHeight * (parseInt(height) / 100));
+            var parsedHeight = parseInt(height) || 0;
+            video_height = Math.floor(window.innerHeight * (parsedHeight / 100));
         } else if (height) {
-            video_height = parseInt(height);
+            video_height = parseInt(height) || 0;
         }
 
-        iframe.css('width', '100%');
-        iframe.height(video_height + 'px');
+        iframe.style.width = '100%';
+        iframe.style.height = video_height + 'px';
     }
 }
 
 
-(function ($) {
+(function () {
     /**
-     * @constructor
+     * video load processor
      */
     function VideoLoadProcessor() {
         this.setScrollListener();
@@ -702,15 +778,11 @@ function setWidthHeightYoutubeVideo(el, height) {
         isNeedStop: false,
     };
     VideoLoadProcessor.prototype.videoConfigs = [];
-    /**
-     * @param {HTMLVideoElement} video
-     * @param {{} | Undefined} config
-     */
     VideoLoadProcessor.prototype.registerNewVideo = function (video, config) {
         if (!(video instanceof HTMLVideoElement)) {
             throw new Error('Wrong tag passed into registerNewVideo');
         }
-        if (this.videoTags.indexOf(video) == -1) {
+        if (this.videoTags.indexOf(video) === -1) {
             this.videoTags.push(video);
             this.videoConfigs.push(typeof config == 'undefined' ? this.defaultConfig : config);
             this.scrollCb('', true);
@@ -718,17 +790,17 @@ function setWidthHeightYoutubeVideo(el, height) {
         }
         return false;
     };
-    /**
-     * @param {HTMLVideoElement} video
-     */
+
     VideoLoadProcessor.prototype.unergisterVideo = function (video) {
         if (!(video instanceof HTMLVideoElement)) {
             throw new Error('Wrong tag passed into unregisterNewVideo');
         }
         var index;
-        if ((index = this.videoTags.indexOf(video)) > -1) {
+        if ((index = this.videoTags.indexOf(video)) !== -1) {
             if (typeof video.remove == 'function') {
-                video.remove();
+                if (video.parentNode !== null) {
+                    video.parentNode.removeChild(video);
+                }
             } else if (video.parentNode) {
                 video.parentNode.removeChild(video);
             }
@@ -751,13 +823,13 @@ function setWidthHeightYoutubeVideo(el, height) {
     };
 
     VideoLoadProcessor.prototype.setScrollListener = function () {
-        /* $(window).scroll(jQuery.proxy(this.scrollCb, this)); */
-        $(window).bind('scroll', t_throttle(jQuery.proxy(this.scrollCb, this), 200));
+        window.addEventListener('scroll', t_throttle(this.scrollCb.bind(this), 200));
     };
 
     VideoLoadProcessor.prototype.scrollCb = function (e, firstInvoke) {
-        var windowHeight = $(window).height(),
-            _v = null;
+        var windowHeight = window.innerHeight;
+        var _v = null;
+        var _vrect;
         for (var i = 0, l = this.videoTags.length; i < l; i++) {
             (_v = this.videoTags[i]), (_vrect = this.getVideoBoundingRect(_v, false));
             /* set fade volume */
@@ -784,7 +856,9 @@ function setWidthHeightYoutubeVideo(el, height) {
     };
 
     VideoLoadProcessor.prototype.getVideoObject = function (video) {
-        for (var i = 0, l = this.videoTags.length; i > l; i++) {
+        var l = this.videoTags.length;
+        //TODO условие раньше было i > l, это не ошибка?
+        for (var i = 0; i < l; i++) {
             var vo = this.videoTags[i];
             if (vo.v === video) {
                 return vo;
@@ -799,7 +873,7 @@ function setWidthHeightYoutubeVideo(el, height) {
         }
         var parent = null;
         if (isNeedParent) {
-            parent = $(video).parents('.r')[0];
+            parent = video.closest('.r');
             if (!parent) {
                 parent = video;
             }
@@ -809,4 +883,29 @@ function setWidthHeightYoutubeVideo(el, height) {
         return parent.getBoundingClientRect();
     };
     window.videoLoadProcessor = new VideoLoadProcessor();
-})(jQuery);
+})();
+
+if (!Element.prototype.matches) {
+    Element.prototype.matches =
+        Element.prototype.matchesSelector ||
+        Element.prototype.msMatchesSelector ||
+        Element.prototype.mozMatchesSelector ||
+        Element.prototype.webkitMatchesSelector ||
+        Element.prototype.oMatchesSelector;
+}
+
+// Polyfill: Element.closest
+if (!Element.prototype.closest) {
+    Element.prototype.closest = function (s) {
+        var el = this;
+
+        while (el && el.nodeType === 1) {
+            if (Element.prototype.matches.call(el, s)) {
+                return el;
+            }
+            el = el.parentElement || el.parentNode;
+        }
+
+        return null;
+    };
+}
