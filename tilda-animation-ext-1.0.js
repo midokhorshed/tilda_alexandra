@@ -403,7 +403,7 @@ function t_animateFix__getElTrigger(el, winHeight) {
   el.triggerOffset = !el.triggerOffset || el.triggerOffset === '0' ? 0 : el.triggerOffset * 1;
   if (t_animationExt__isOnlyScalableElem()) el.triggerOffset *= zoomValue;
 
-  if (el.trigger == '0.5') {
+  if (+(el.trigger) === 0.5) {
     el.triggerOffset += winHeight / 2;
     if (el.triggerOffset > el.topOffset && el.triggerOffset <= winHeight / 2) {
       el.triggerOffset = el.topOffset;
@@ -411,7 +411,7 @@ function t_animateFix__getElTrigger(el, winHeight) {
     if (!t_animationExt__isOnlyScalableElem()) el.triggerOffset /= zoomValue;
   }
 
-  if (el.trigger == '1') {
+  if (+(el.trigger) === 1) {
     el.triggerOffset += winHeight;
     if (el.triggerOffset > el.topOffset && el.triggerOffset <= winHeight) {
       el.triggerOffset = el.topOffset;
@@ -579,13 +579,13 @@ function t_animateParallax__initMouse() {
     t_animateParallax__moveEl(mouseElement, winHeight, winWidth);
   });
 
-  window.addEventListener('resize', function () {
+  window.addEventListener('resize', t_throttle(function() {
     winHeight = window.innerHeight;
     winWidth = window.innerWidth;
     Array.prototype.forEach.call(mouseElements, function (mouseElement) {
       t_animateParallax__cashOffsets(mouseElement);
     });
-  }, 50);
+  }, 50));
 }
 
 /**
@@ -665,13 +665,13 @@ function t_animateParallax__moveEl(el, winHeight, winWidth) {
     }
 
     // for large background image, which is larger than record (".r") height
-    if (!pathX) {
+    if (typeof pathX !== 'undefined') {
       var winHalfX = winWidth / 2;
       var mouseCenterOffsetX = winHalfX - e.clientX;
       var moveIntensityX = mouseCenterOffsetX / winHalfX;
       moveX = Math.round(pathX * moveIntensityX);
     }
-    if (!pathY) {
+    if (typeof pathY !== 'undefined') {
       var winHalfY = winHeight / 2;
       var mouseCenterOffsetY = winHalfY - e.clientY;
       var moveIntensityY = mouseCenterOffsetY / winHalfY;
@@ -689,12 +689,12 @@ function t_animateParallax__moveEl(el, winHeight, winWidth) {
     if (stop) { return; }
 
     requestAnimationFrame(t_animateParallax__moveEl__drawFrame);
-
+  
     if (moveX != 0) {
-      frameMoveX += (moveX - frameMoveX) * 0.02;
+      frameMoveX += (moveX - frameMoveX)*0.02;
     }
     if (moveY != 0) {
-      frameMoveY += (moveY - frameMoveY) * 0.02;
+      frameMoveY += (moveY - frameMoveY)*0.02;
     }
     if (Math.abs(frameMoveX - moveX) < 1 && Math.abs(frameMoveY - moveY) < 1) {
       stop = true;
