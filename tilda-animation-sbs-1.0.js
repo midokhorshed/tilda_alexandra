@@ -1,7 +1,8 @@
 /**
- * tilda-animation-sbs used in zeroblocks, when user activate step-by-step animation
+ * tilda-animation-sbs используется в Зеро-блоках для пошаговой анимации.
+ * Здесь передается объект с данными, настроенными пользователем для анимации и генерируется в @keyframes и добавляется в тег стилей.
  */
-if (document.readyState !== 'loading') {
+ if (document.readyState !== 'loading') {
 	t_animateSbs__init();
 } else {
 	document.addEventListener('DOMContentLoaded', t_animateSbs__init);
@@ -54,6 +55,15 @@ function t_animateSbs__wrapAnimatedAtomEls() {
 				
 				var parentElem = atomElement.closest('.t396__elem');
 				var animWrapper = atomElement.closest('.tn-atom__sbs-anim-wrapper');
+				
+				// add radius for animation wrapper, because we set filters for atom's container (t396__elem)
+				var elType = parentElem ? parentElem.getAttribute('data-elem-type') : '';
+				// getPropertyValue returns border-radius value in px. If it cannot setted, will return '0px'
+				var elBorderRadius = window.getComputedStyle(parentElem).getPropertyValue('border-radius');
+				if (elType === 'shape' && elBorderRadius && parseInt(elBorderRadius)) {
+					animWrapper.style.borderRadius = elBorderRadius;
+				}
+				
 				var parentFilterStyle = window.getComputedStyle(parentElem).getPropertyValue('filter');
 				var parentWebkitFilterStyle = window.getComputedStyle(parentElem)
 					.getPropertyValue('-webkit-filter');
@@ -96,7 +106,8 @@ function t_animateSbs__initAllRes() {
 		stop: false,
 		needUpdate: true,
 	};
-	opts.mode = (opts.els[0].hasAttribute('data-field-sbsevent-value')) ? 'edit' : 'publish';
+	
+	opts.mode = (opts.els[0] ? opts.els[0].hasAttribute('data-field-sbsevent-value') : '') ? 'edit' : 'publish';
 	
 	if (opts.els.length === 0) {
 		return;
@@ -1400,7 +1411,7 @@ function t_animationSbs__isOnlyScalableElem() {
 function t_animationSbs__getZoom(el) {
 	var zoomValue = 1;
 	var artboard = el.closest('.t396__artboard');
-	if (artboard.classList.contains('t396__artboard_scale')) {
+	if (artboard && artboard.classList.contains('t396__artboard_scale')) {
 		zoomValue = window.tn_scale_factor;
 	}
 	return zoomValue;
@@ -1418,9 +1429,16 @@ function t_animationSbs__getZoom(el) {
 function t_animateSbs__wrapAtomEls() {
 	var wrappingEls = document.querySelectorAll('[data-animate-sbs-event]');
 	Array.prototype.forEach.call(wrappingEls, function (wrappingEl) {
-		var atomElements = wrappingEl.querySelector('.tn-atom');
-		if (atomElements && !atomElements.closest('.tn-atom__sbs-anim-wrapper')) {
-			t_animateSbs__wrapEl(atomElements, 'tn-atom__sbs-anim-wrapper');
+		var atomElement = wrappingEl.querySelector('.tn-atom');
+		if (atomElement && !atomElement.closest('.tn-atom__sbs-anim-wrapper')) {
+			t_animateSbs__wrapEl(atomElement, 'tn-atom__sbs-anim-wrapper');
+			var elType = wrappingEl.getAttribute('data-elem-type');
+			// getPropertyValue returns border-radius value in px. If it cannot setted, will return '0px'
+			var elBorderRadius = window.getComputedStyle(wrappingEl).getPropertyValue('border-radius');
+			if (elType === 'shape' && elBorderRadius && parseInt(elBorderRadius)) {
+				var animWrapper = wrappingEl.querySelector('.tn-atom__sbs-anim-wrapper');
+				if (animWrapper) animWrapper.style.borderRadius = elBorderRadius;
+			}
 		}
 	});
 }
