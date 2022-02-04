@@ -3529,7 +3529,7 @@ function t_form_dict(msg) {
 			if (window.isInitEventsCustomMask !== true) {
 				var script = document.createElement('script');
 				script.type = 'text/javascript';
-				script.src = 'script-custom-mask.js';
+				script.src = 'https://static.tildacdn.com/js/tilda-custom-mask-1.0.min.js';
 				document.head.appendChild(script);
 				window.isInitEventsCustomMask = true;
 			}
