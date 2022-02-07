@@ -5,7 +5,6 @@
  После чего добавленные файлы можем отправлять с формой на выбранный в настройках облачный сервис с указанным api key сервиса.
 */
 
-//////
 // All method for IE
 
 // Array.prototype.some
@@ -127,13 +126,15 @@ if (!window.t_upwidget_lock) {
     });
 }
 
-/** Init upwidget */
+/**
+ * Init upwidget
+ */
 function t_upwidget__init() {
     var inputUpWidgets = document.querySelectorAll('input[role="upwidget-uploader"]');
     var uploadCounter = 0;
     var doneSvg = '<svg xmlns="http://www.w3.org/2000/svg" class="t-upwidget-container__image-done" width="24" height="24" viewBox="0 0 24 24"><path fill="none" d="M0 0h24v24H0z"/><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>';
     var stopSvg = '<svg class="t-upwidget-container__data_progress_stop" width="20px" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"\n' +
-                      'viewBox="0 0 72.434 72.44" style="margin-left: 15px; cursor: pointer; vertical-align: middle; enable-background:new 0 0 72.434 72.44;" xml:space="preserve">\n' +
+                      'viewBox="0 0 72.434 72.44" style="height: 19px; margin-left: 15px; cursor: pointer; vertical-align: middle; enable-background:new 0 0 72.434 72.44;" xml:space="preserve">\n' +
                       '<path style="fill:#231F20;" d="M36.22,0C16.212,0,0,16.216,0,36.227c0,19.999,16.212,36.214,36.22,36.214\n' +
                           'c20.011,0,36.214-16.215,36.214-36.214C72.434,16.215,56.231,0,36.22,0z M52.058,46.82c1.379,1.424,0.953,4.078-0.959,5.932\n' +
                           'c-1.911,1.854-4.577,2.209-5.959,0.785l-9.027-9.295l-9.298,9.027c-1.421,1.379-4.075,0.947-5.929-0.961s-2.206-4.574-0.785-5.956\n' +
@@ -315,7 +316,9 @@ function t_upwidget__init() {
         xhr.send();
     }
 
-    /** Init clicl by btn add file in input and add change/trigger event for input file */
+    /**
+     * Init clicl by btn add file in input and add change/trigger event for input file
+     */
     function t_upwidget__containerButtonClick() {
         var btn = this;
 
@@ -371,19 +374,22 @@ function t_upwidget__init() {
             delete window.t_upwidget__errorUpload[container.id];
         }
 
-        var input = container.querySelector('input[type="file"][role="upwidget-uploader-file"]');
+        var inputFile = container.querySelector('input[type="file"][role="upwidget-uploader-file"]');
 
-        input.click();
-        input.removeEventListener('change', t_upwidget__listenFileChange);
-        input.addEventListener('change', t_upwidget__listenFileChange);
+        inputFile.click();
+        inputFile.removeEventListener('change', t_upwidget__listenFileChange);
+        inputFile.addEventListener('change', t_upwidget__listenFileChange);
     }
 
-    /** Change input file */
+    /**
+     * Change input file
+     */
     function t_upwidget__listenFileChange() {
         var inputFile = this;
         var container = inputFile.closest('.t-upwidget-container');
         t_upwidget__getFiles(container, inputFile.files);
         t_removeEl(inputFile);
+        t_upwidget__addCoordinates(container);
     }
 
     /**
@@ -744,7 +750,9 @@ function t_upwidget__init() {
         t_upwidget__ifFileRequired(container);
     }
 
-    /** Delete added file button */
+    /**
+     * Delete added file button
+     */
     function t_upwidget__containerClickTableActions() {
         var fileId = this.closest('.t-upwidget-container__data_table_actions_remove').getAttribute('fileid');
         var container = this.closest('.t-upwidget-container');
@@ -778,7 +786,9 @@ function t_upwidget__init() {
         }
     }
 
-    /** Stop load file progress */
+    /**
+     * Stop load file progress
+     */
     function t_upwidget__containerProgressStop() {
         var svg = this;
         var container = svg.closest('.t-upwidget-container');
@@ -821,24 +831,28 @@ function t_upwidget__init() {
         var count = 0;
         var containerData = document.querySelectorAll('.t-upwidget-container__data');
 
-        Array.prototype.forEach.call(containerData, function (container) {
+        Array.prototype.forEach.call(containerData, function(container) {
             if (container.classList.contains('t-upwidget__show-files')) {
                 count++;
                 container.classList.remove('t-upwidget__show-files');
+                t_upwidget__clearStyleList(container);
             }
         });
 
         return count;
     }
 
-    /** Checked input file on the multi add files */
+    /**
+     * Checked input file on the multi add files
+     */
     function t_upwidget__containerMultiButton() {
-        if (t_upwidget__hideFilelist() > 0) {
-            return;
-        }
+        if (t_upwidget__hideFilelist() > 0) return;
 
         var btn = this;
-        var containerData = btn.closest('.t-upwidget-container').querySelector('.t-upwidget-container__data');
+        var container = btn.closest('.t-upwidget-container');
+        var containerData = container.querySelector('.t-upwidget-container__data');
+
+        t_upwidget__addCoordinates(container);
 
         containerData.classList.add('t-upwidget__show-files');
     }
@@ -918,7 +932,9 @@ function t_upwidget__init() {
     }
 }
 
-/** Add style in document */
+/**
+ * Add style in document
+ */
 function t_upwidget__addStyle() {
     var upWidgets = document.querySelectorAll('.t-upwidget-container');
     var style = document.getElementById('tilda-upwidget-style');
@@ -927,6 +943,118 @@ function t_upwidget__addStyle() {
         var styleStr = '<style id="tilda-upwidget-style">.t-upwidget-container{position:relative}.t-upwidget-container__image-done{vertical-align:middle;margin-left:0;margin-right:8px;filter:contrast(4) invert(1)}.t-upwidget-container__button,.t-upwidget-container__button-indiv{font-weight:400;white-space:nowrap;background-color:#000;color:#fff;text-align:center;cursor:pointer}.t-upwidget-container__button-indiv{line-height:30px;width:150px;padding:0;vertical-align:middle;height:30px;margin:0 0 30px 30px}.t-upwidget__show-files.t-upwidget-container__data{display:block;width:320px!important;text-align:left;overflow-y:auto;max-height:80vh;background-color:#fff;z-index:9999;padding-top:20px;position:absolute;box-shadow:0 2px 10px rgba(0,0,0,.1);border:1px solid rgba(0,0,0,.05)}.t-upwidget-container__button{max-width:250px;overflow:hidden;text-overflow:ellipsis;display:table;padding:0 20px;line-height:38px!important}.t-upwidget-container__button.t-upwidget-container__button_error{text-align:left;color:red;padding:0 12px;font-size:small}.t-upwidget-container__button.t-upwidget-container__button_fileholder{text-align:left;color:#fff;padding:0 12px}.t-upwidget-container__button_disabled{opacity:.6;cursor:default}.t-upwidget-container__data{display:none}.t-upwidget-container__data_table{table-layout:fixed;font-size:14px;padding:0;margin:0 0 15px}.t-upwidget-container__data_table_image{width:35px;padding:0;margin:0;text-align:center}.t-upwidget-container__data_table_fileinfo{white-space:nowrap;padding:0;margin:0;vertical-align:bottom}.t-upwidget-container__data_table_actions_remove svg{cursor:pointer}.t-upwidget-container__data_filename{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px}.t-upwidget-container__data_fileextension,.t-upwidget-container__data_filename{padding:0;margin:0;display:inline-block;vertical-align:middle}.t-upwidget-container__data_filesize{padding-left:2px;opacity:.6;display:inline-block;vertical-align:middle}.t-upwidget-container__data_progress{width:65%;height:6px;vertical-align:middle;display:inline-block;border:1px solid gray;opacity:.7}.t-upwidget-container__data_progress_back{background-color:gray;width:0;height:100%}.t-upwidget-container__globalerror{font-weight:700;margin:10px;display:block}.t-form.js-error-control-box.t-upwidget-container__button{border:1px solid red!important}</style>';
         document.head.insertAdjacentHTML('beforeend', styleStr);
     }
+}
+
+/**
+ * Add coordinates for ZB
+ *
+ * @param {Node} container - element
+ */
+function t_upwidget__addCoordinates(container) {
+    var main = container.closest('.t396__artboard');
+
+    if (!main) return;
+
+    var rec = container.closest('.t-rec');
+    var upwidgetList = container.querySelector('.t-upwidget-container__data');
+    var button = container.querySelector('.t-upwidget-container__button');
+    var recStyle = getComputedStyle(rec, null);
+    var recHeight = rec.offsetHeight - (parseInt(recStyle.paddingTop) + parseInt(recStyle.paddingBottom));
+    var mainRect = main.getBoundingClientRect();
+    var buttonRect = button.getBoundingClientRect();
+    var buttonHeight = button.offsetHeight;
+    var buttonTop = buttonRect.top - mainRect.top;
+    var buttonBottom = buttonTop + buttonHeight;
+    var differenceBottom = recHeight - buttonBottom;
+    var differenceTop = recHeight - differenceBottom;
+    var isOpen = false;
+    var isTop = false;
+    var upwidgetListHeight = upwidgetList.offsetHeight;
+    var maxMinHeight = 0;
+    var upwidgetListTop = 0;
+
+    if (upwidgetList.classList.contains('t-upwidget__show-files')) isOpen = true;
+    if (upwidgetList.style.top.indexOf('-') !== -1) isTop = true;
+
+    if (isOpen && !isTop) {
+        upwidgetListTop = t_upwidget__getHeightCoordinates(upwidgetList, upwidgetListHeight, differenceBottom);
+        upwidgetList.style.maxHeight = t_upwidget__getHeight(upwidgetList, upwidgetListTop) + 'px';
+        upwidgetList.style.overflowY = 'auto';
+        return;
+    }
+
+    if (!isOpen) upwidgetList.classList.add('t-upwidget__show-files');
+
+    upwidgetListHeight = upwidgetList.offsetHeight;
+    upwidgetListTop = t_upwidget__getHeightCoordinates(upwidgetList, upwidgetListHeight, differenceTop);
+    maxMinHeight = t_upwidget__getHeight(upwidgetList, upwidgetListTop);
+
+    if (!isOpen) upwidgetList.classList.remove('t-upwidget__show-files');
+
+    if (differenceBottom < upwidgetListHeight && differenceTop > upwidgetListHeight) {
+        upwidgetList.style.minHeight = maxMinHeight + 'px';
+        upwidgetList.style.top = '-' + upwidgetListHeight + 'px';
+    } else if (differenceBottom < upwidgetListHeight && differenceTop < upwidgetListHeight) {
+        upwidgetList.style.overflowY = 'auto';
+        upwidgetList.style.maxHeight = maxMinHeight + 'px';
+        upwidgetList.style.minHeight = maxMinHeight + 'px';
+        upwidgetList.style.top = '-' + upwidgetListTop + 'px';
+    } else if (differenceBottom > upwidgetListHeight) {
+        upwidgetList.style.top = null;
+    }
+}
+
+/**
+ * Get the height of list relative to the top or bottom edge of the block,
+ * not exceeding the difference from the button to the edges
+ *
+ * @param {Node} upwidgetList - list element
+ * @param {number} upwidgetListHeight - block height with the whole list of files
+ * @param {number} difference - difference from edge to button(top or bottom)
+ * @returns {number} - max height list
+ */
+function t_upwidget__getHeightCoordinates(upwidgetList, upwidgetListHeight, difference) {
+    var table = upwidgetList.querySelector('table');
+    var tableStyle = getComputedStyle(table);
+    var tableMarginTop = parseInt(tableStyle.marginTop) || 0;
+    var tableMarginBottom = parseInt(tableStyle.marginBottom) || 0;
+    var tableHeight = table.offsetHeight + tableMarginTop + tableMarginBottom;
+
+    while (difference < upwidgetListHeight) {
+        upwidgetListHeight -= tableHeight;
+    }
+
+    return upwidgetListHeight;
+}
+
+/**
+ * Get inner content height without padding and borders
+ *
+ * @param {Node} upwidgetList - list element
+ * @param {number} upwidgetListHeight - block height with the whole list of files
+ * @returns {number} - height
+ */
+function t_upwidget__getHeight(upwidgetList, upwidgetListHeight) {
+    var upwidgetListStyle = getComputedStyle(upwidgetList, null);
+    var upwidgetListPaddingTop = parseInt(upwidgetListStyle.paddingTop) || 0;
+    var upwidgetListPaddingBottom = parseInt(upwidgetListStyle.paddingBottom) || 0;
+    var upwidgetListBorderTop = parseInt(upwidgetListStyle.borderTopWidth) || 0;
+    var upwidgetListBorderBottom = parseInt(upwidgetListStyle.borderBottomWidth) || 0;
+    var result = upwidgetListHeight - (upwidgetListPaddingTop + upwidgetListPaddingBottom + upwidgetListBorderTop + upwidgetListBorderBottom);
+
+    return result;
+}
+
+/**
+ * Clear style element
+ *
+ * @param {Node} element - clear element
+ */
+function t_upwidget__clearStyleList(element) {
+    element.style.top = null;
+    element.style.overflowY = null;
+    element.style.maxHeight = null;
+    element.style.minHeight = null;
 }
 
 /**
