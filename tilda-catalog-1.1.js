@@ -885,7 +885,7 @@ function t_store_loadProducts_byId(idArr, opts, onload) {
     var c = Date.now();
 
     var dataObj = {
-        productsuid: idArr,
+        'productsuid[]': idArr,
         c: c,
     };
 
@@ -902,7 +902,11 @@ function t_store_loadProducts_byId(idArr, opts, onload) {
     var xhr = new XMLHttpRequest();
     xhr.onload = function () {
         if (xhr.readyState === xhr.DONE && xhr.status === 200) {
-            onload();
+            if (typeof xhr.responseText !== 'string' || xhr.responseText.substr(0, 1) !== '{') {
+                // eslint-disable-next-line no-console
+                console.log("Can't get products array by uid list");
+            }
+            onload(JSON.parse(xhr.responseText));
         }
     };
     xhr.onerror = function () {
@@ -4892,6 +4896,7 @@ function t_store_dict(msg) {
         LV: 'Atrasts',
     };
 
+    /* units */
     dict['mm'] = {
         EN: 'mm',
         RU: 'мм',
@@ -5668,7 +5673,9 @@ function t_store_product_triggerSoldOutMsg(el_product, isSoldOut, opts) {
         }
     }
 
-    tStore.dispatchEvent(new Event('displayChanged'));
+    if (tStore) {
+        tStore.dispatchEvent(new Event('displayChanged'));
+    }
 }
 
 function t_store_product_addOneOptionsControl(type, curOption, optionsWrapper, options, firstAvailabeEdition, recid) {
@@ -6270,7 +6277,9 @@ function t_store_filters_initResetBtn(recid, opts) {
         if (storeFilterCustomSelect) {
             storeFilterCustomSelect.classList.remove('active');
         }
-        el_rec.querySelector('.t-store__filter__checkbox').classList.remove('active');
+        Array.prototype.forEach.call(el_rec.querySelectorAll('.t-store__filter__checkbox'), function(checkbox) {
+            checkbox.classList.remove('active');
+        });
 
         // reset controls previous values
         if (el_min) {
@@ -7282,6 +7291,7 @@ function t_store_filters_handleOnChange_price(recid, opts, el_rec) {
             });
         });
     }
+
     // submit button
     var el_btn = el_rec.querySelector('.js-store-filter-price-btn');
     if (el_btn) {
@@ -7408,7 +7418,7 @@ function t_store_filters_handleOnChange_price_checkMax(recid, el_max, minVal, ma
     var val = t_store__cleanPrice(el_max.value);
 
     // check, that value was changed
-    if (val !== el_max.getAttribute('data-previousmax')) {
+    if (val.toString() !== el_max.getAttribute('data-previousmax').toString()) {
         val = t_store_filters_handleOnChange_checkInRange(val, el_max, minVal, maxVal, 'max');
 
         if (opts && opts.sidebar) {
@@ -7445,7 +7455,7 @@ function t_store_filters_handleOnChange_price_checkMin(recid, el_min, minVal, ma
     var val = t_store__cleanPrice(el_min.value);
     // check, that value was changed
 
-    if (val !== el_min.getAttribute('data-previousmin')) {
+    if (val.toString() !== el_min.getAttribute('data-previousmin').toString()) {
         val = t_store_filters_handleOnChange_checkInRange(val, el_min, minVal, maxVal, 'min');
 
         if (opts && opts.sidebar) {
@@ -7930,18 +7940,9 @@ function t_store_oneProduct_requestAllSingle(opts) {
         arrId.push(uid);
     });
 
-    t_store_loadProducts_byId(arrId, opts, function (data) {
-        if (typeof data !== 'string' || data.substr(0, 1) !== '{') {
-            // eslint-disable-next-line no-console
-            console.log("Can't get products array by uid list");
-        }
-        try {
-            var dataObj = JSON.parse(data);
-            var productsArr = dataObj.products;
-        } catch (e) {
-            // eslint-disable-next-line no-console
-            console.log(data);
-        }
+    t_store_loadProducts_byId(arrId, opts, function (dataObj) {
+        var productsArr = dataObj.products;
+
         if (productsArr === '') {
             // eslint-disable-next-line no-console
             console.log("Something went wrong. Can't get products array by uid list. Please check products UID.");
