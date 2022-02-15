@@ -116,7 +116,9 @@ function t_store_history_pushState(state, title, url) {
 
 function t_store_tabs_init(recid, options, product, el_product, el_popup) {
     var tabs = el_product.querySelectorAll('.t-store__tabs');
-    t_store__removeElement(tabs);
+    while (tabs.firstChild) {
+        tabs.removeChild(tabs.firstChild);
+    }
 
     t_store_loadProductTabs(recid, options, product.uid, function () {
         var tabsData = window.tStoreTabsList ? window.tStoreTabsList[product.uid] : null;
@@ -358,24 +360,21 @@ function t_store_hoverZoom_init(recid) {
     var rec = document.getElementById('rec' + recid);
     try {
         if (rec.querySelector('[data-hover-zoom]')) {
-            if (!jQuery.cachedScript) {
-                jQuery.cachedScript = function (url) {
-                    var options = {
-                        dataType: 'script',
-                        cache: true,
-                        url: url,
-                    };
-                    return jQuery.ajax(options);
-                };
-            }
-            $.cachedScript('https://static.tildacdn.com/js/tilda-hover-zoom-1.0.min.js').done(function (script, textStatus) {
-                if (textStatus == 'success') {
-                    t_hoverZoom_init(recid);
-                } else {
-                    // eslint-disable-next-line no-console
-                    console.log('Upload script error: ' + textStatus);
-                }
-            });
+            var head = document.head;
+            var script = document.createElement('script');
+            script.type = 'text/javascript';
+            script.src = 'https://static.tildacdn.com/js/tilda-hover-zoom-1.0.min.js';
+            script.onload = function () {
+                t_hoverZoom_init(recid);
+            };
+            script.onerror = function (textStatus) {
+                // eslint-disable-next-line no-console
+                console.log('Upload script error: ' + textStatus);
+            };
+            head.appendChild(script);
+        } else {
+            // eslint-disable-next-line no-console
+            console.log('Zoom image init error: no elements');
         }
     } catch (e) {
         // eslint-disable-next-line no-console
@@ -450,9 +449,11 @@ function t_store_initStoreParts(recid, opts) {
                     var controlType;
                     var el_control = rec.querySelector('[data-filter-value="' + storeparttitle.replace(/\\/g, '\\\\') + '"]');
 
-                    if (el_control.length > 0) {
+                    if (el_control) {
                         el_hiddenInput = el_control.closest('.js-store-filter-item').querySelector('.js-store-filter-opt');
-                        previousInputValue = el_hiddenInput.value;
+                        if (el_hiddenInput) {
+                            previousInputValue = el_hiddenInput.value;
+                        }
                         if (previousInputValue) {
                             prevControl = rec.querySelector('[data-filter-value="' + previousInputValue + '"]');
                             prevControl.checked = false;
@@ -478,7 +479,9 @@ function t_store_initStoreParts(recid, opts) {
                         }
                     } else {
                         el_hiddenInput = rec.querySelector('.js-store-filter-opt[name="storepartuid"]');
-                        previousInputValue = el_hiddenInput.value;
+                        if (el_hiddenInput) {
+                            previousInputValue = el_hiddenInput.value;
+                        }
                         if (previousInputValue) {
                             prevControl = rec.querySelector('[data-filter-value="' + previousInputValue + '"]');
                             prevControl.checked = false;
@@ -612,12 +615,11 @@ function t_store_loadProducts(method, recid, opts, slice, relevantsOpts) {
     }
 
     var ts = Date.now();
-    $.ajax({
-        type: 'GET',
-        url: apiUrl,
-        data: dataObj,
-        dataType: 'text',
-        success: function (data) {
+
+    var xhr = new XMLHttpRequest();
+    xhr.onload = function () {
+        if (xhr.readyState === xhr.DONE && xhr.status === 200) {
+            var data = xhr.responseText;
             // clear preloader timeout
             clearTimeout(rec.getAttribute('preloader-timeout'));
 
@@ -690,8 +692,8 @@ function t_store_loadProducts(method, recid, opts, slice, relevantsOpts) {
                     if (!data) {
                         return;
                     }
-                    var filterObject = t_store_parse_jsonData(data);
-                    t_store_filters_init(recid, opts, filterObject);
+                    t_store_filters_init(recid, opts, data);
+
                     // filters prods number info
                     if (!showRelevants) {
                         t_store_filters_prodsNumber_update(rec, opts, obj);
@@ -701,12 +703,10 @@ function t_store_loadProducts(method, recid, opts, slice, relevantsOpts) {
                 var el_sidebar = rec.querySelector('.t951__sidebar');
                 el_sidebar.classList.add('t951__sidebar_empty');
                 var text =
-                    window.tildaBrowserLang === 'RU' ?
-                    'Пожалуйста, добавьте хотя бы один фильтр каталога для отображения боковой панели магазина. <a href="https://help-ru.tilda.cc/online-store-payments/filters" target="_blank" rel="nofollow noopener">Справка</a>' :
-                    'Please <a href="https://help.tilda.cc/online-store-payments/filters" target="_blank" rel="nofollow noopener">add at least one catalog filter</a> to display the store sidebar';
-                el_sidebar.html('' +
-                    '<span class="t-text t-text_xxs">' + text + '</span>' +
-                    '');
+                    window.tildaBrowserLang === 'RU'
+                    ? 'Пожалуйста, добавьте хотя бы один фильтр каталога для отображения боковой панели магазина. <a href="https://help-ru.tilda.cc/online-store-payments/filters" target="_blank" rel="nofollow noopener">Справка</a>'
+                    : 'Please <a href="https://help.tilda.cc/online-store-payments/filters" target="_blank" rel="nofollow noopener">add at least one catalog filter</a> to display the store sidebar';
+                el_sidebar.innerHTML = '<span class="t-text t-text_xxs">' + text + '</span>';
             }
 
             if (t_store_isQueryInAddressBar('tstore') && window.t_store__scrollToBlock) {
@@ -716,7 +716,7 @@ function t_store_loadProducts(method, recid, opts, slice, relevantsOpts) {
 
                 if (storeuid == recid) {
                     setTimeout(function () {
-                        window.scrollTo(0, rec.offset().top);
+                        window.scrollTo(0, rec.getBoundingClientRect().top + window.pageYOffset - 50);
                     }, 500);
 
                     window.t_store__scrollToBlock = null;
@@ -730,26 +730,27 @@ function t_store_loadProducts(method, recid, opts, slice, relevantsOpts) {
                 loadMoreBtn.classList.remove('t-btn_sending');
             }
 
-            var scrollLoadMoreClickEvent = function () {
+            var loadMoreScrollEvent = t_throttle(function () {
                 if (window.tStoreProductsRequested) {
                     return;
                 }
 
                 if (window.innerWidth < 960) {
-                    var scrollWidth = gridContainer.get(0).scrollWidth;
-                    var scrollLeft = gridContainer.scrollLeft();
-                    var outerWidth = gridContainer.outerWidth();
-                    if (outerWidth + scrollLeft + 20 > scrollWidth && loadMoreBtn.style.display !== 'none') {
+                    var scrollWidth = gridContainer.scrollWidth;
+                    var scrollLeft = gridContainer.scrollLeft;
+                    var offsetWidth = gridContainer.offsetWidth;
+                    if (offsetWidth + scrollLeft + 20 > scrollWidth && loadMoreBtn.style.display !== 'none') {
                         loadMoreBtn.click();
                     }
                 }
-            };
+            });
+
             // load more
             if (obj.nextslice) {
-                var isMobileOneRow = gridContainer.querySelectorAll('t-store__grid-cont_mobile-one-row').length > 0;
+                var isMobileOneRow = gridContainer.querySelectorAll('.t-store__grid-cont_mobile-one-row').length > 0;
 
+                // add load more button
                 if (!loadMoreBtn) {
-                    // add load more button
                     var loadMoreBtn = t_store_get_loadMoreBtn_html(rec, opts);
 
                     if (opts.sidebar) {
@@ -759,24 +760,27 @@ function t_store_loadProducts(method, recid, opts, slice, relevantsOpts) {
                     }
 
                     loadMoreBtn = rec.querySelector('.js-store-load-more-btn');
-                } else {
-                    loadMoreBtn.style.display = '';
-                    var loadMoreBtnEvent = function () {
-                        if (!window.tStoreProductsRequested) {
-                            loadMoreBtn.classList.add('t-btn_sending');
-                            t_store_loadProducts('', recid, opts, obj.nextslice);
-                        }
-                    };
-                    loadMoreBtn.removeEventListener('click', loadMoreBtnEvent);
-                    loadMoreBtn.addEventListener('click', loadMoreBtnEvent);
                 }
 
+                loadMoreBtn.style.display = '';
+                var loadMoreBtnClickEvent = function () {
+                    if (!window.tStoreProductsRequested) {
+                        loadMoreBtn.classList.add('t-btn_sending');
+                        t_store_loadProducts('', recid, opts, obj.nextslice);
+                    }
+                };
+                loadMoreBtn.parentNode.replaceChild(loadMoreBtn.cloneNode(true), loadMoreBtn);
+                loadMoreBtn = rec.querySelector('.js-store-load-more-btn');
+                loadMoreBtn.addEventListener('click', loadMoreBtnClickEvent);
+
                 if (isMobileOneRow) {
-                    gridContainer.addEventListener('scroll', t_throttle(scrollLoadMoreClickEvent));
+                    gridContainer.addEventListener('scroll', loadMoreScrollEvent);
                 }
-            } else if (!showRelevants && loadMoreBtn) {
-                loadMoreBtn.style.display = 'none';
-                gridContainer.removeEventListener('scroll', scrollLoadMoreClickEvent);
+            } else if (!showRelevants) {
+                if (loadMoreBtn) {
+                    loadMoreBtn.style.display = 'none';
+                }
+                gridContainer.removeEventListener('scroll', loadMoreScrollEvent);
             }
 
             // add Pagination
@@ -832,26 +836,27 @@ function t_store_loadProducts(method, recid, opts, slice, relevantsOpts) {
 
             document.body.dispatchEvent(new Event('twishlist_addbtn'));
             window.tStoreProductsRequested = false;
-        },
-        error: function (xhr) {
-            // show more button
-            var loadMoreBtn = rec.querySelector('.js-store-load-more-btn');
-            if (loadMoreBtn) {
-                loadMoreBtn.classList.remove('t-btn_sending');
-            }
-            // check internet connection
-            var ts_delta = Date.now() - ts;
-            if (xhr.status == 0 && ts_delta < 100) {
-                // eslint-disable-next-line no-console
-                console.log('Request error (get store products). Please check internet connection...');
-            }
-            window.tStoreProductsRequested = false;
-        },
-        timeout: 1000 * 25,
-    });
+        }
+    };
+    xhr.onerror = function () {
+        // show more button
+        var loadMoreBtn = rec.querySelector('.js-store-load-more-btn');
+        if (loadMoreBtn) {
+            loadMoreBtn.classList.remove('t-btn_sending');
+        }
+        // check internet connection
+        var ts_delta = Date.now() - ts;
+        if (xhr.status == 0 && ts_delta < 100) {
+            // eslint-disable-next-line no-console
+            console.log('Request error (get store products). Please check internet connection...');
+        }
+        window.tStoreProductsRequested = false;
+    };
+    xhr.open('GET', apiUrl + '?' + t_store__serializeData(dataObj));
+    xhr.send();
 }
 
-function t_store_loadOneProduct(recid, opts, curProdUid) {
+function t_store_loadOneProduct(recid, opts, curProdUid, onload) {
     var c = Date.now();
     var storepartuid = opts.storepart;
 
@@ -862,24 +867,21 @@ function t_store_loadOneProduct(recid, opts, curProdUid) {
         c: c,
     };
 
-    return $.ajax({
-        type: 'GET',
-        url: 'https://store.tildacdn.com/api/getproduct/',
-        data: dataObj,
-        dataType: 'text',
-        success: function (data) {
-            // eslint-disable-next-line no-console
-            console.log(data);
-        },
-        error: function () {
-            // eslint-disable-next-line no-console
-            console.log("Can't get product with uid = " + curProdUid + ' in storepart = ' + opts.storepart);
-        },
-        timeout: 1000 * 25,
-    });
+    var xhr = new XMLHttpRequest();
+    xhr.onload = function () {
+        if (xhr.readyState === xhr.DONE && xhr.status === 200) {
+            onload();
+        }
+    };
+    xhr.onerror = function () {
+        // eslint-disable-next-line no-console
+        console.log("Can't get product with uid = " + curProdUid + ' in storepart = ' + opts.storepart);
+    };
+    xhr.open('GET', 'https://store.tildacdn.com/api/getproduct/?' + t_store__serializeData(dataObj));
+    xhr.send();
 }
 
-function t_store_loadProducts_byId(idArr, opts, onsuccess) {
+function t_store_loadProducts_byId(idArr, opts, onload) {
     var c = Date.now();
 
     var dataObj = {
@@ -897,25 +899,21 @@ function t_store_loadProducts_byId(idArr, opts, onsuccess) {
         }
     }
 
-    return $.ajax({
-        type: 'GET',
-        url: apiUrl,
-        data: dataObj,
-        dataType: 'text',
-        success: function (data) {
-            onsuccess(data);
-        },
-        error: function () {
-            // eslint-disable-next-line no-console
-            console.log("Can't get getproductsbyuid. Requesting idArr: ");
-            // eslint-disable-next-line no-console
-            console.log(idArr);
-        },
-        timeout: 1000 * 25,
-    });
+    var xhr = new XMLHttpRequest();
+    xhr.onload = function () {
+        if (xhr.readyState === xhr.DONE && xhr.status === 200) {
+            onload();
+        }
+    };
+    xhr.onerror = function () {
+        // eslint-disable-next-line no-console
+        console.log('Can\'t get getproductsbyuid. Requesting idArr: ' + idArr);
+    };
+    xhr.open('GET', apiUrl + '?' + t_store__serializeData(dataObj));
+    xhr.send();
 }
 
-function t_store_loadFilters(recid, opts, onsuccess) {
+function t_store_loadFilters(recid, opts, onload) {
     /* because only load data in this method we don't need to check below
         var el_rec = document.getElementById('rec' + recid);
         if (el_rec.querySelector('.js-store-filter').length > 0) {
@@ -953,26 +951,23 @@ function t_store_loadFilters(recid, opts, onsuccess) {
         apiUrl = 'https://tilda.cc/projects/store/getfilters/';
     }
 
-    return $.ajax({
-        type: 'GET',
-        url: apiUrl,
-        data: dataObj,
-        dataType: 'text',
-        success: function (data) {
-            // try to parse filters data
-            /*
+    var xhr = new XMLHttpRequest();
+    xhr.onload = function () {
+        // try to parse filters data
+        /*
             window.tStoreFiltersData = obj;
             $('.js-store').dispatchEvent(new Event('tStoreFiltersLoaded');
-            */
-
-            onsuccess(data);
-        },
-        error: function () {
-            // eslint-disable-next-line no-console
-            console.log("Can't get filters in storepart = " + opts.storepart);
-        },
-        timeout: 1000 * 25,
-    });
+        */
+        if (xhr.readyState === xhr.DONE && xhr.status === 200) {
+            onload(JSON.parse(xhr.responseText));
+        }
+    };
+    xhr.onerror = function () {
+        // eslint-disable-next-line no-console
+        console.log("Can't get filters in storepart = " + opts.storepart);
+    };
+    xhr.open('GET', apiUrl + '?' + t_store__serializeData(dataObj));
+    xhr.send();
 }
 
 function t_store_loadProductTabs(recid, opts, curProdUid, onload) {
@@ -1027,19 +1022,6 @@ function t_store_loadProductTabs(recid, opts, curProdUid, onload) {
     };
     xhr.open('GET', apiUrl + '?' + t_store__serializeData(dataObj));
     xhr.send();
-}
-
-function t_store_parse_jsonData(data) {
-    try {
-        var obj = JSON.parse(data);
-    } catch (e) {
-        // eslint-disable-next-line no-console
-        console.log(data);
-    }
-    if (typeof obj !== 'object') {
-        return;
-    }
-    return obj;
 }
 
 // draw grid of products
@@ -1342,7 +1324,9 @@ function t_store_pagination_draw(recid, opts, curPage, nextSlice, total) {
     var html = t_store_pagination_getHtml(recid, opts, curPage, pagingRange, totalPages);
     // Append properly
     if (pagination) {
-        t_store__removeElement(pagination);
+        while (pagination.firstChild) {
+            pagination.removeChild(pagination.firstChild);
+        }
         pagination.insertAdjacentHTML('beforeend', html);
     } else if (loadmore) {
         loadmore.insertAdjacentHTML('afterend', html);
@@ -1899,7 +1883,7 @@ function t_store_get_productPopup_closeText_html(opts) {
 function t_store_get_loadMoreBtn_html(rec, opts) {
     var str = '';
     // Hide load more button for a single row view
-    var isMobileOneRow = window.innerWidth < 960 && rec.querySelector('.js-store-grid-cont.t-store__grid-cont_mobile-one-row')[0] ? true : false;
+    var isMobileOneRow = window.innerWidth < 960 && rec.querySelector('.js-store-grid-cont.t-store__grid-cont_mobile-one-row') ? true : false;
     var className = isMobileOneRow ? ' t-store__load-more-btn-wrap_hidden ' : '';
 
     var btnSizeClass = opts.btnSize === 'sm' ? 't-btn_xs' : 't-btn_sm';
@@ -3399,7 +3383,7 @@ function t_store_checkUrl(opts, recid) {
             var isSnippet = document.getElementById('allrecords') !== document.querySelector('.t-store__product-snippet') && document.getElementById('allrecords').contains(document.querySelector('.t-store__product-snippet'));
 
             if (!isSnippet) {
-                t_store_loadOneProduct(recid, opts, curProdUid).then(function (data) {
+                t_store_loadOneProduct(recid, opts, curProdUid, function (data) {
                     if (typeof data === 'string' && data.substr(0, 1) == '{') {
                         try {
                             var dataObj = JSON.parse(data);
@@ -5623,7 +5607,7 @@ function t_store_product_updateEdition_moveSlider(recid, el_product, edition) {
 
 function t_store_product_triggerSoldOutMsg(el_product, isSoldOut, opts) {
     t_store__removeElement(el_product.querySelector('.js-store-prod-sold-out'));
-    var recid = el_product.closest('.r').getAttribute('id').replace(/rec/, '');
+    var tStore = el_product.closest('.t-store');
     var el_buyBtn = el_product.querySelectorAll('[href="#order"]');
     var soldOutMsg;
 
@@ -5651,6 +5635,7 @@ function t_store_product_triggerSoldOutMsg(el_product, isSoldOut, opts) {
         if (isSoldOut) {
             soldOutMsg = t_store_get_soldOutMsg_html();
             el_product.querySelector('.js-store-price-wrapper').insertAdjacentHTML('beforeend', soldOutMsg);
+
             Array.prototype.forEach.call(el_buyBtn, function (btn) {
                 btn.classList.add('t-store__prod-popup__btn_disabled');
             });
@@ -5670,6 +5655,7 @@ function t_store_product_triggerSoldOutMsg(el_product, isSoldOut, opts) {
         if (isSoldOut) {
             soldOutMsg = t_store_get_soldOutMsg_html();
             el_product.querySelector('.js-store-price-wrapper').insertAdjacentHTML('beforeend', soldOutMsg);
+
             if (el_buyBtn.length > 1) {
                 el_buyBtn[el_buyBtn.length - 1].style.display = 'none';
             } else if (el_buyBtn[0]) {
@@ -5682,7 +5668,7 @@ function t_store_product_triggerSoldOutMsg(el_product, isSoldOut, opts) {
         }
     }
 
-    t_store_unifyCardsHeights(recid, opts);
+    tStore.dispatchEvent(new Event('displayChanged'));
 }
 
 function t_store_product_addOneOptionsControl(type, curOption, optionsWrapper, options, firstAvailabeEdition, recid) {
@@ -5858,12 +5844,15 @@ function t_store_product_sortValues(values, type, filterValues) {
 
     var litreOrder = ['мл', 'л'];
 
+    var largeNumsOrder = ['тыс', 'млн', 'млрд'];
+
     var units = {
         wattOrder: wattOrder,
         bytesOrder: bytesOrder,
         weightOrder: weightOrder,
         lengthOrder: lengthOrder,
         litreOrder: litreOrder,
+        largeNumsOrder: largeNumsOrder,
     };
 
     // Check if ALL user values are matched clothesOrder array data
@@ -5872,6 +5861,11 @@ function t_store_product_sortValues(values, type, filterValues) {
     checkValues.forEach(function (value) {
         if (typeof value == 'string') {
             value = value.trim().toUpperCase();
+            if (clothesOrder.indexOf(value) < 0) {
+                isCloth = false;
+            }
+        } else if (typeof value == 'object' && typeof value.value == 'string') {
+            value = value.value.trim().toUpperCase();
             if (clothesOrder.indexOf(value) < 0) {
                 isCloth = false;
             }
@@ -5890,6 +5884,8 @@ function t_store_product_sortValues(values, type, filterValues) {
             result = values.sort(function (a, b) {
                 var valueA = type === 'filter' ? a.value : a;
                 var valueB = type === 'filter' ? b.value : b;
+                valueA = valueA.toString().replace(/^(от|from)\s+/i, '');
+                valueB = valueB.toString().replace(/^(от|from)\s+/i, '');
                 valueA = parseFloat(valueA.toString().replace(',', '.').trim());
                 valueB = parseFloat(valueB.toString().replace(',', '.').trim());
 
