@@ -388,7 +388,7 @@ function twishlist__loadLocalObj() {
  */
 function twishlist__saveLocalObj() {
     // если max days == 0 - не сохраняем
-    if (!window.twishlist_maxstoredays) {
+    if (typeof window.twishlist_maxstoredays != 'undefined' && window.twishlist_maxstoredays == 0) {
         return;
     }
 
@@ -410,7 +410,7 @@ function twishlist__saveLocalObj() {
  * Синхронизирует товары в объекте window.twishlist и localStorage
  */
 function twishlist__syncProductsObject__LStoObj() {
-    if (!window.twishlist_maxstoredays) {
+    if (typeof window.twishlist_maxstoredays != 'undefined' && window.twishlist_maxstoredays == 0) {
 		return;
     }
 
@@ -637,52 +637,58 @@ function twishlist__getProductObjFromPel(productElement) {
         var editionOptionsElements = productElement.querySelectorAll('.js-product-edition-option');
         Array.prototype.forEach.call(editionOptionsElements, function(optionsElement) {
 			var optionName = optionsElement.querySelector('.js-product-edition-option-name').textContent;
-			var optionVariant = optionsElement.querySelector('option:checked').value;
-			var optionPrice = optionsElement.querySelector('option:checked').getAttribute('data-product-edition-variant-price');
-			optionPrice = twishlist__cleanPrice(optionPrice);
-
-			if (optionName && optionVariant) {
-				var optionObj = {};
-				if (optionName != '') {
-					optionName = twishlist__escapeHtml(optionName);
+			var selectedOption = optionsElement.querySelector('option:checked');
+			if (selectedOption) {
+				var optionVariant = selectedOption.value;
+				var optionPrice = selectedOption.getAttribute('data-product-edition-variant-price');
+				optionPrice = twishlist__cleanPrice(optionPrice);
+	
+				if (optionName && optionVariant) {
+					var optionObj = {};
+					if (optionName != '') {
+						optionName = twishlist__escapeHtml(optionName);
+					}
+					if (optionVariant != '') {
+						optionVariant = twishlist__escapeHtml(optionVariant);
+						optionVariant = optionVariant.replace(/(?:\r\n|\r|\n)/g, '');
+					}
+					if (optionName.length > 1 && optionName.charAt(optionName.length - 1) == ':') {
+						optionName = optionName.substring(0, optionName.length - 1);
+					}
+					optionObj['option'] = optionName;
+					optionObj['variant'] = optionVariant;
+					optionObj['price'] = optionPrice;
+					options.push(optionObj);
 				}
-				if (optionVariant != '') {
-					optionVariant = twishlist__escapeHtml(optionVariant);
-					optionVariant = optionVariant.replace(/(?:\r\n|\r|\n)/g, '');
-				}
-				if (optionName.length > 1 && optionName.charAt(optionName.length - 1) == ':') {
-					optionName = optionName.substring(0, optionName.length - 1);
-				}
-				optionObj['option'] = optionName;
-				optionObj['variant'] = optionVariant;
-				optionObj['price'] = optionPrice;
-				options.push(optionObj);
 			}
 		});
 		// дополнительные опции
         var optionsElements = productElement.querySelectorAll('.js-product-option');
 		Array.prototype.forEach.call(optionsElements, function(optionsElement) {
 			var optionName = optionsElement.querySelector('.js-product-option-name').textContent;
-			var optionVariant = optionsElement.querySelector('option:checked').value;
-			var optionPrice = optionsElement.querySelector('option:checked').getAttribute('data-product-variant-price');
-			optionPrice = twishlist__cleanPrice(optionPrice);
-
-			if (optionName && optionVariant) {
-				var optionObj = {};
-				if (optionName != '') {
-					optionName = twishlist__escapeHtml(optionName);
+			var selectedOption = optionsElement.querySelector('option:checked');
+			if (selectedOption) {
+				var optionVariant = selectedOption.value;
+				var optionPrice = selectedOption.getAttribute('data-product-variant-price');
+				optionPrice = twishlist__cleanPrice(optionPrice);
+	
+				if (optionName && optionVariant) {
+					var optionObj = {};
+					if (optionName != '') {
+						optionName = twishlist__escapeHtml(optionName);
+					}
+					if (optionVariant != '') {
+						optionVariant = twishlist__escapeHtml(optionVariant);
+						optionVariant = optionVariant.replace(/(?:\r\n|\r|\n)/g, '');
+					}
+					if (optionName.length > 1 && optionName.charAt(optionName.length - 1) == ':') {
+						optionName = optionName.substring(0, optionName.length - 1);
+					}
+					optionObj['option'] = optionName;
+					optionObj['variant'] = optionVariant;
+					optionObj['price'] = optionPrice;
+					options.push(optionObj);
 				}
-				if (optionVariant != '') {
-					optionVariant = twishlist__escapeHtml(optionVariant);
-					optionVariant = optionVariant.replace(/(?:\r\n|\r|\n)/g, '');
-				}
-				if (optionName.length > 1 && optionName.charAt(optionName.length - 1) == ':') {
-					optionName = optionName.substring(0, optionName.length - 1);
-				}
-				optionObj['option'] = optionName;
-				optionObj['variant'] = optionVariant;
-				optionObj['price'] = optionPrice;
-				options.push(optionObj);
 			}
 		});
 		if (sku == '') {
@@ -1159,24 +1165,29 @@ function twishlist__updateTotalProductsObj() {
 function twishlist__reDrawCartIcon() {
     var twishlist = window.twishlist;
     var wishlistIcon = document.querySelector('.t1002__wishlisticon');
-	if (!wishlistIcon) return;
-	var wishlistIconCounter = wishlistIcon.querySelector('.js-wishlisticon-counter');
+	if (wishlistIcon) {
+		var wishlistIconCounter = wishlistIcon.querySelector('.js-wishlisticon-counter');
+		if (twishlist['total'] == 1) {
+			wishlistIcon.style.opacity = 0;
+			wishlistIcon.style.transition = 'opacity .3s';
+			wishlistIcon.style.opacity = 1;
+		}
+	}
 	var t1004_wishlistCounter = document.querySelector('.t1004 .js-wishlisticon-counter');
-    if (twishlist['total'] == 1) {
-        wishlistIcon.style.opacity = 0;
-		wishlistIcon.style.transition = 'opacity .3s';
-		wishlistIcon.style.opacity = 1;
-    }
 
     if (twishlist.products !== undefined && twishlist.products.length > 0 && twishlist['total'] > 0) {
-        wishlistIcon.classList.add('t1002__wishlisticon_showed');
-        wishlistIconCounter.innerHTML = twishlist['total'];
+		if (wishlistIcon) {
+			wishlistIcon.classList.add('t1002__wishlisticon_showed');
+			wishlistIconCounter.innerHTML = twishlist['total'];
+		}
 		if (t1004_wishlistCounter) {
 			t1004_wishlistCounter.innerHTML = twishlist['total'];
 		}
     } else {
-        wishlistIcon.classList.remove('t1002__wishlisticon_showed');
-        wishlistIconCounter.innerHTML = '';
+		if (wishlistIcon) {
+			wishlistIcon.classList.remove('t1002__wishlisticon_showed');
+			wishlistIconCounter.innerHTML = '';
+		}
 		if (t1004_wishlistCounter) {
 			t1004_wishlistCounter.innerHTML = '';
 		}
@@ -1201,10 +1212,6 @@ function twishlist__openWishlist() {
 		wishlistIcon.classList.remove('t1002__wishlisticon_showed');
 	}
     document.querySelector('body').classList.add('t1002__body_wishlistwinshowed');
-
-    if (window.tildaForm.hideErrors !== undefined) {
-        window.tildaForm.hideErrors(document.querySelector('.t1002 .t-form'));
-    }
 
     setTimeout(function () {
         twishlist__lockScroll();
