@@ -1,343 +1,253 @@
 /**
- * tilda-video-processor необходим для блоков, где в качестве фоновой обложки используюся видео -
- * (CR...). Фоновое видео загружается ссылой и может воспроизводиться либо как  в формате .mp4 и
- * .webm для HTML5-проигрывателя, либо это будет ссылка на YouTube видео и соответственно
- * YouTube-плеер.
- *
- * Основные функции в скрипте две: window.videoBG и setWidthAndHeightVideo. Первая создает
- * контейнер и включает видео в обложке, когда это необходимо. Вторая - задаёт высоту и ширину
- * блоку с видео. Важно то, что обе функции используются в другом скрипте - tilda-cover-1.0.js. В
- * tilda-cover вторая функция, например, используется при ресайзе страницы.
+ * tilda-video-processor необходим для блоков, где в качестве фоновой обложки зачастую используюся видео -
+ * (CR...). Однако иногда это могут быть остальные блоки: видео VD01; последовательность слайдов GL06.
+ * Видео загружается ссылой и может воспроизводиться либо как  в формате .mp4 и .webm для HTML5-проигрывателя,
+ * либо это будет ссылка на YouTube видео и соответственно YouTube-плеер. Для первого случая - основная функция в скрипте
+ * t_videoprocessor__processHTML5Video, для второго - processYoutubeVideo. В них происходят по сути идентичные сценарии:
+ * получаем параметры, переданные через tilda-cover, эти параметры применяем на видео, которое будет создавать, вешаем
+ * обработчики по ресайзу или скроллу:
+ * например, постановку на паузу, если видео не в зоне видимости; переопределение высоты контейнера и видео; и тд.
  *
  * В tilda-cover можно установить эффект при скролле: паралакс или фиксацию. Фиксация в видео не
  * работает.
  *
  * В setWidthAndHeightVideo обложка для YouTube увеличена по высоте, чтобы пользователь не видел
- * рекламный блок снизу.
+ * рекламный блок снизу, это вынесено в переменной isAdCutted.
  *
- * В функции timer_player_do видео запускается, когда находится в зоне видимости пользователя.
- * Видео ставится на паузу, если оно уже было инициализировано, но не попадает в зону видимости
- * пользователя.
- *
- * фоновые видео не работают в мобильных версиях.
+ * фоновые видео не работают в мобильных версиях. Но они будут работать на iPad Pro, потому что там
+ * по дефолту установлен предпросмотр страницы в десктопной версии.
  */
-(function () {
-	window.processYoutubeVideo = function (div, height) {
-		load_youtube_api();
-		
-		var defFunc = function () {
-			var src = div.getAttribute('data-content-video-url-youtube');
-			var nomute = div.getAttribute('data-content-video-nomute');
-			var noloop = div.getAttribute('data-content-video-noloop');
-			var nocover = div.getAttribute('data-content-video-nocover');
-			
-			var iframe = document.createElement('iframe');
-			//generate src for YouTube video
-			iframe.src = processSrc(src, nocover, nomute);
-			iframe.frameBorder = '0';
-			iframe.allow = 'fullscreen';
-			
-			var playtimer;
-			div.appendChild(iframe);
-			if (!window.isMobile && typeof YT !== 'undefined') {
-				// eslint-disable-next-line no-undef
-				new YT.Player(iframe, {
-					events: {
-						onReady: function (e) {
-							onYouTubePlayerReady_do(div, e.target, nomute);
-							if (e.target.setVolume && nomute !== 'yes') {
-								e.target.setVolume(0);
-							}
-							e.target.setLoop(true);
-						},
-						onStateChange: function (e) {
-							if (e.target.setVolume && nomute !== 'yes') {
-								e.target.setVolume(0);
-							}
-							
-							if (e.data === -1) {
-								var sp = window.fix_scrolltop_beforestop_youtube;
-								if (sp >= 0) {
-									window.scrollTo(0, sp);
-									delete window.fix_scrolltop_beforestop_youtube;
-								}
-							}
-							// eslint-disable-next-line no-undef
-							if (e.data === YT.PlayerState.PLAYING) {
-								
-								playtimer = window.setInterval(function () {
-									var a = e.target.getCurrentTime();
-									var b = e.target.getDuration();
-									if (a + 1 > b && b !== 0) {
-										e.target.seekTo(0);
-										if (noloop === 'yes') {
-											e.target.stopVideo();
-											e.target.clearVideo();
-										}
-									}
-								}, 1000);
-							} else {
-								window.clearInterval(playtimer);
-							}
-						},
-					},
-				});
-			}
-			setWidthAndHeightVideo(div, height, 'youtube');
+
+/**
+ *  append to head YouTube api script, wait after load YT object
+ *  to create iframe and set properties
+ *
+ * @param {HTMLElement} el
+ * @param {string} height
+ */
+ function processYoutubeVideo(el, height) {
+	// append YouTube API script
+	if (!document.getElementById('youtube-api')) {
+		var script = document.createElement('script');
+		script.id = 'youtube-api';
+		script.src = 'https://www.youtube.com/iframe_api';
+		document.head.insertAdjacentElement('beforeend', script);
+	}
+
+	videoProcessor_onFuncLoad('YT', function () {
+		// create object with YouTube video params, which will be found by data-attributes in current element
+		var videoObject = {
+			'url-youtube': '',
+			'nomute': '',
+			'noloop': '',
+			'nocover': '',
 		};
-		videoprocessor_onFuncLoad('YT', defFunc);
-	};
-	
-	var t_videoProcessor__extend = function (out) {
-		out = out || {};
-		for (var i = 1; i < arguments.length; i++) {
-			if (!arguments[i])
-				continue;
-			for (var key in arguments[i]) {
-				// eslint-disable-next-line no-prototype-builtins
-				if (arguments[i].hasOwnProperty(key))
-					out[key] = arguments[i][key];
-			}
+
+		// iterating keys from created object and append to it current values
+		for (var key in videoObject) {
+			var value = el.getAttribute('data-content-video-' + key);
+			if (value) videoObject[key] = value;
 		}
-		return out;
-	};
-	
-	// window.videoBG is global func and used in tilda-cover
-	window.videoBG = function (el, selector) {
-		var options = {};
-		if (typeof selector == 'object') {
-			options = t_videoProcessor__extend({}, window.videoBG.defaults, selector);
-		} else if (!selector) {
-			options = window.videoBG.defaults;
-		} else {
-			return selector.videoBG(options);
-		}
-		
-		var container = el;
-		
-		// check if elements available otherwise it will cause issues
-		if (!container) {
-			return;
-		}
-		
-		// container to be at least relative
-		if (container.style.position === 'static' || !container.style.position) {
-			container.style.position = 'relative';
-		}
-		
-		// get width
-		if (options.width === 0) {
-			options.width = container.offsetWidth;
-		}
-		
-		// get height
-		if (options.height === 0) {
-			options.height = container.offsetHeight;
-		}
-		
-		// get the wrapper
-		
-		// var wrap = window.videoBG.wrapper();
-		// wrap.height(options.height)
-		//     .width(options.width);
-		
-		// if is a text replacement
-		if (options.textReplacement) {
-			// force sizes
-			options.scale = true;
-			
-			// set sizes and forcing text out
-			container.style.width = options.width + 'px';
-			container.style.height = options.height + 'px';
-			container.style.textIndent = '-9999px';
-		} else {
-			// set the wrapper above the video
-			//wrap.css('z-index',options.zIndex+1);
-		}
-		
-		// move the contents into the wrapper
-		// commented by n.o
-		// wrap.html(container.clone(true));
-		
-		// get the video
-		var video = window.videoBG.video(options);
-		
-		// if we are forcing width / height
-		if (options.scale) {
-			// overlay wrapper
-			// wrap.height(options.height)
-			//     .width(options.width);
-			
-			// video
-			video.style.height = options.height + 'px';
-			video.style.width = options.width + 'px';
-		}
-		
-		// add it all to the container
-		// $container.html(wrap);
-		container.insertAdjacentElement('beforeend', video);
-		
-		if (container.getAttribute('data-content-video-nomute')) {
-			var videoBlock = container.querySelector('video');
-			if (videoBlock) {
-				videoBlock.setAttribute('muted', 'true');
-			}
-		}
-		
-		// setWidthHeightHTMLVideo(video, options.height + 'px');
-		
-		setWidthAndHeightVideo(video, options.height + 'px', 'html5');
-		
-		return video.querySelector('video');
-	};
-	
-	// set to fullscreen
-	window.videoBG.setFullscreen = function (el) {
-		var windowWidth = window.innerWidth;
-		var windowHeight = window.innerHeight;
-		
-		el.style.minHeight = 0;
-		el.style.minWidth = 0;
-		if (el.parentNode) {
-			el.parentNode.style.width = windowWidth + 'px';
-			el.parentNode.style.height = windowHeight + 'px';
-		}
-		// if by width
-		var shift;
-		if (windowWidth / windowHeight > el.aspectRatio) {
-			el.style.width = windowWidth + 'px';
-			el.style.height = 'auto';
-			/* shift the element up*/
-			var height = el.offsetHeight;
-			shift = (((height - windowWidth) / 2) > 0) ? ((height - windowWidth) / 2) : 0;
-			el.style.top = -shift + 'px';
-		} else {
-			el.style.width = 'auto';
-			el.style.height = windowHeight + 'px';
-			// shift the element left
-			var width = el.offsetWidth;
-			shift = (((width - windowWidth) / 2) > 0) ? ((width - windowWidth) / 2) : 0;
-			el.style.left = -shift + 'px';
-			
-			// this is a hack mainly due to the iphone
-			if (shift === 0) {
-				setTimeout(function () {
-					window.videoBG.setFullscreen(el);
-				}, 500);
-			}
-		}
-		
-		var videoBgWrapper = document.querySelectorAll('body > .videoBG_wrapper');
-		Array.prototype.forEach.call(videoBgWrapper, function (videoBg) {
-			videoBg.style.width = windowWidth + 'px';
-			videoBg.style.height = windowHeight + 'px';
-		});
-	};
-	
-	// get the formatted video element
-	window.videoBG.video = function (options) {
-		// commented by n.o
-		// $('html, body').scrollTop(-1);
-		
-		// video container
-		var div = document.createElement('div');
-		div.classList.add('videoBG');
-		div.style.position = options.position;
-		div.style.zIndex = options.zIndex;
-		div.style.top = '0';
-		div.style.left = '0';
-		div.style.height = options.height + 'px';
-		div.style.width = options.width + 'px';
-		div.style.opacity = options.opacity;
-		div.style.overflow = 'hidden';
-		// video element
-		var video = document.createElement('video');
-		video.style.position = 'relative';
-		video.style.zIndex = options.zIndex;
-		video.style.poster = options.poster;
-		video.style.top = '0';
-		video.style.left = '0';
-		video.style.minHeight = '100%';
-		video.style.minWidth = '100%';
-		video.setAttribute('autoplay', options.autoplay);
-		video.setAttribute('loop', options.loop);
-		video.setAttribute('muted', options.muted);
-		
-		if (options.volume > 0) {
-			video.setAttribute('volume', options.volume);
-		} else {
-			video.setAttribute('volume', '0');
-		}
-		
-		// if fullscreen
-		if (options.fullscreen) {
-			video.addEventListener('canplay', function () {
-				// set the aspect ratio
-				video.aspectRatio = video.offsetWidth / video.offsetHeight;
-				window.videoBG.setFullscreen(video);
-			});
-			
-			// listen out for screenresize
-			var resizeTimeout;
-			window.addEventListener('resize', function () {
-				clearTimeout(resizeTimeout);
-				resizeTimeout = setTimeout(function () {
-					window.videoBG.setFullscreen(video);
-				}, 100);
-			});
-			window.videoBG.setFullscreen(video);
-		}
-		
-		// if meant to loop
-		if (options.loop) {
-			var loops_left = options.loop;
-			
-			// can't use the loop attribute as firefox doesn't support it
-			video.addEventListener('ended', function () {
-				// if we have some loops to throw
-				if (loops_left) {
-					// replay
-					video.muted = true;
-					video.play();
-				}
-				
-				// if not forever
-				if (loops_left !== true) {
-					// one less loop
-					loops_left--;
-				}
-			});
-		}
-		
-		// when can play, play
-		video.addEventListener('canplay', function () {
-			if (options.autoplay) {
-				// replay
-				video.muted = true;
-				video.play();
+
+		// append new values to simplified using in t_videoprocessor__setYoutubePlayer
+		videoObject['mute'] = videoObject['nomute'] !== 'yes';
+		videoObject['loop'] = videoObject['noloop'] !== 'yes';
+		videoObject['cover'] = videoObject['nocover'] !== 'yes';
+
+		if (window.isMobile) return;
+		t_videoprocessor__setYoutubePlayer(el, videoObject);
+		var customHeight = t_videoprocessor__getHeightFromAttr(height);
+		var calculatedHeight = parseInt(el.getAttribute('data-content-cover-updated-height'), 10) || 0;
+		var maxHeight = calculatedHeight > customHeight ? el.getAttribute('data-content-cover-updated-height') : height;
+		setWidthAndHeightVideo(el, maxHeight, 'youtube');
+
+		window.addEventListener('resize', function () {
+			if (videoObject['cover']) {
+				// update params of maxHeight in resize
+				customHeight = t_videoprocessor__getHeightFromAttr(height);
+				calculatedHeight = parseInt(el.getAttribute('data-content-cover-updated-height'), 10) || 0;
+				maxHeight = calculatedHeight > customHeight ? el.getAttribute('data-content-cover-updated-height') : height;
+				setWidthAndHeightVideo(el, maxHeight, 'youtube');
 			}
 		});
-		
-		
-		// if supports video
-		if (window.videoBG.supportsVideo()) {
-			// supports webm
-			if (window.videoBG.supportType('webm') && options.webm !== '') {
-				// play webm
-				video.setAttribute('src', options.webm);
-			} else if (window.videoBG.supportType('mp4') && options.mp4 !== '') {
-				// supports mp4
-				// play mp4
-				video.setAttribute('src', options.mp4);
-				
-				// $video.html('<source src="'.options.mp4.'" />');
-			} else {
-				// throw ogv at it then
-				// play ogv
-				video.setAttribute('src', options.ogv);
+	});
+}
+
+function t_videoprocessor__setYoutubePlayer(el, videoObject) {
+	// create YouTube iframe
+	var iframe = document.createElement('iframe');
+	iframe.src = t_videoprocessor__generateYoutubeURL(videoObject);
+	iframe.frameBorder = '0';
+	iframe.allow = 'fullscreen';
+	el.appendChild(iframe);
+
+	var playtimer;
+
+	new YT.Player(iframe, {
+		events:
+			{
+				onReady: function (e) {
+					t_videoprocessor__pauseAndPlayYouTubeVideo(el, e.target, videoObject['mute']);
+					t_videoprocessor__muteYouTubeVideo(e, videoObject);
+					e.target.setLoop(true);
+				},
+				onStateChange: function (e) {
+					t_videoprocessor__muteYouTubeVideo(e, videoObject);
+					if (e.data === YT.PlayerState.PLAYING) {
+						playtimer = t_videoprocessor__updateLoopedVideo(e.target, videoObject);
+					} else {
+						window.clearInterval(playtimer);
+					}
+				},
+			},
+	});
+}
+
+/**
+ * mute created video
+ *
+ * @param {Event} e
+ * @param {Object} videoObject
+ */
+function t_videoprocessor__muteYouTubeVideo(e, videoObject) {
+	if (e.target.setVolume && videoObject['mute']) {
+		e.target.setVolume(0);
+	}
+}
+
+/**
+ * remove black window between stop and play again video
+ *
+ * @param {Object} el - player
+ * @param {Object} videoObject
+ * @return {number} - an interval, that checks ending of the video
+ */
+function t_videoprocessor__updateLoopedVideo(el, videoObject) {
+	return setInterval(function () {
+		// time in sec
+		var currentTime = el.getCurrentTime();
+		var endVideoTime = el.getDuration();
+		if (endVideoTime && currentTime + 1 > endVideoTime) {
+			el.seekTo(0); // return to the beginning (0sec)
+			if (videoObject['noloop']) {
+				el.stopVideo();
+				el.clearVideo();
 			}
 		}
-		
+	}, 1000);
+}
+
+/**
+ * function to generate mp4 or .webm video
+ *
+ * @param {HTMLElement} el
+ * @param {Object} options
+ */
+function t_videoprocessor__processHTML5Video(el, options) {
+	if (!el) return;
+
+	// container to be at least relative
+	if (window.getComputedStyle(el).position === 'static' || !el.style.position) {
+		el.style.position = 'relative';
+	}
+	//set height
+	options.height = el.offsetHeight;
+
+	var videoWrapper = t_videoprocessor__createHTML5Video(options);
+	el.insertAdjacentElement('beforeend', videoWrapper);
+	setWidthAndHeightVideo(videoWrapper, options.height + 'px', 'html5');
+
+	window.addEventListener('resize', function () {
+		setWidthAndHeightVideo(videoWrapper, options.height + 'px', 'html5');
+	});
+
+	window.addEventListener('scroll', t_throttle(function () {
+		t_videoprocessor__pauseAndPlayHTMLVideo(videoWrapper);
+	}));
+
+	return videoWrapper.querySelector('video');
+}
+
+function t_videoprocessor__pauseAndPlayHTMLVideo(videoWrapper) {
+	var video = videoWrapper.querySelector('video');
+	if (!video) return;
+
+	var viewportTopPos = window.pageYOffset;
+	var viewportBottomPos = viewportTopPos + document.documentElement.clientHeight;
+	var videoWrapperTopPos = videoWrapper.getBoundingClientRect().top + viewportTopPos;
+	var videoWrapperHeight = videoWrapper.offsetHeight;
+	var videoWrapperBottomPos = videoWrapperTopPos + videoWrapperHeight;
+	var padding = 500;
+
+	var currentPosition;
+	if (viewportBottomPos > videoWrapperTopPos && viewportTopPos <= videoWrapperBottomPos) {
+		currentPosition = 'inside';
+	} else if (
+		(viewportBottomPos < videoWrapperTopPos && viewportBottomPos > videoWrapperTopPos - padding) ||
+		(viewportTopPos > videoWrapperBottomPos && viewportTopPos < videoWrapperBottomPos + padding)) {
+		currentPosition = 'near';
+	} else {
+		currentPosition = 'near';
+	}
+
+	switch (currentPosition) {
+		case 'inside':
+			video.play();
+			break;
+		case 'near':
+			video.pause();
+			break;
+	}
+}
+
+/**
+ * create video wrapper with video with current options
+ *
+ * @param {Object} options
+ * @return {HTMLDivElement}
+ */
+function t_videoprocessor__createHTML5Video(options) {
+	var videoWrapper = document.createElement('div');
+	videoWrapper.style.position = options.position;
+	videoWrapper.style.zIndex = options.zIndex;
+	videoWrapper.style.top = '0';
+	videoWrapper.style.left = '0';
+	videoWrapper.style.height = options.height + 'px';
+	videoWrapper.style.width = options.width + 'px';
+	videoWrapper.style.opacity = options.opacity;
+	videoWrapper.style.overflow = 'hidden';
+
+	var video = document.createElement('video');
+	video.style.position = 'relative';
+	video.style.zIndex = options.zIndex;
+	video.style.poster = options.poster;
+	video.style.top = '0';
+	video.style.left = '0';
+	video.style.minHeight = '100%';
+	video.style.minWidth = '100%';
+	video.style.height = options.height + 'px';
+	video.style.width = options.width + 'px';
+	video.autoplay = options.autoplay;
+	video.loop = options.loop;
+	video.muted = options.muted;
+	video.volume = options.volume;
+	video.setAttribute('playsinline', '');
+
+	video.addEventListener('canplay', function () {
+		if (options.autoplay) {
+			video.muted = true;
+			video.play();
+		}
+	});
+
+	var codec = options.mp4 ? 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"' : 'video/webm; codecs="vp8, vorbis"';
+	var emptyVideo = document.createElement('video');
+	var isVideoSupported = emptyVideo.canPlayType(codec);
+
+	if (isVideoSupported) {
+		video.src = options.webm || options.mp4;
+		videoWrapper.insertAdjacentElement('beforeend', video);
+	} else if (!videoWrapper.querySelector('.no-video-loader')) {
 		// image for those that don't support the video
 		var img = document.createElement('img');
 		img.setAttribute('src', options.poster);
@@ -347,99 +257,12 @@
 		img.style.left = '0';
 		img.style.minHeight = '100%';
 		img.style.minWidth = '100%';
-		
-		// add the image to the video
-		// if suuports video
-		if (window.videoBG.supportsVideo()) {
-			// add the video to the wrapper
-			div.insertAdjacentElement('beforeend', video);
-		} else {
-			// nope - whoa old skool
-			// add the image instead
-			div.insertAdjacentElement('beforeend', img);
-		}
-		
-		// if text replacement
-		if (options.textReplacement) {
-			// force the heights and widths
-			div.style.minHeight = '1px';
-			div.style.minWidth = '1px';
-			video.style.minHeight = '1px';
-			video.style.minWidth = '1px';
-			img.style.minHeight = '1px';
-			img.style.minWidth = '1px';
-			
-			div.style.height = options.height + 'px';
-			div.style.width = options.width + 'px';
-			video.style.height = options.height + 'px';
-			video.style.width = options.width + 'px';
-			img.style.height = options.height + 'px';
-			img.style.width = options.width + 'px';
-		}
-		
-		if (window.videoBG.supportsVideo()) {
-			// v.play();
-		}
-		return div;
-	};
-	
-	// check if supported video
-	window.videoBG.supportsVideo = function () {
-		return document.createElement('video').canPlayType;
-	};
-	
-	// check which type is supported
-	window.videoBG.supportType = function (str) {
-		// if not at all supported
-		if (!window.videoBG.supportsVideo()) {
-			return false;
-		}
-		
-		// create video
-		var v = document.createElement('video');
-		
-		// check which?
-		switch (str) {
-			case 'webm':
-				return v.canPlayType('video/webm; codecs="vp8, vorbis"');
-			case 'mp4':
-				return v.canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"');
-			case 'ogv':
-				return v.canPlayType('video/ogg; codecs="theora, vorbis"');
-		}
-		/* nope*/
-		return false;
-	};
-	
-	// get the overlay wrapper
-	window.videoBG.wrapper = function () {
-		var wrap = document.createElement('div');
-		wrap.classList.add('videoBG_wrapper');
-		wrap.style.position = 'absolute';
-		wrap.style.top = '0';
-		wrap.style.left = '0';
-		return wrap;
-	};
-	
-	// these are the defaults
-	window.videoBG.defaults = {
-		mp4: '',
-		ogv: '',
-		webm: '',
-		poster: '',
-		autoplay: true,
-		loop: true,
-		scale: false,
-		position: 'absolute',
-		opacity: 1,
-		textReplacement: false,
-		zIndex: 0,
-		width: 0,
-		height: 0,
-		fullscreen: false,
-		imgFallback: true,
-	};
-})();
+		img.classList.add('no-video-loader');
+		videoWrapper.insertAdjacentElement('beforeend', img);
+	}
+
+	return videoWrapper;
+}
 
 /**
  * set width and height to current video
@@ -449,386 +272,256 @@
  * @param {string} type - YouTube or HTML5 video
  */
 function setWidthAndHeightVideo(el, height, type) {
-	console.log('set width and height ' + type + '-video: ' + height);
 	var iframe = el.querySelector('iframe');
 	if (type === 'html5') {
 		var video = el;
 		el = el.closest('.t-cover__carrier');
 		iframe = el.querySelector('video');
 	}
-	var nocover = el.getAttribute('data-content-video-nocover');
-	var noadcut = el.getAttribute('data-content-video-noadcut-youtube');
-	var customratio = el.getAttribute('data-content-video-ratio');
-	var video_ratio = 0.5625;
-	if (customratio && !isNaN(Number(customratio)) && customratio > 0) {
-		video_ratio = parseFloat(customratio);
-	}
-	var parsedHeight;
-	var video_height;
-	var div_height;
-	
-	
-	if (nocover !== 'yes') {
-		if (!height) {
-			height = '100vh';
+
+	var isHasCover = el.getAttribute('data-content-video-nocover') !== 'yes';
+	var isAdCutted = el.getAttribute('data-content-video-noadcut-youtube') !== 'yes';
+	var customRatio = el.getAttribute('data-content-video-ratio');
+	var adCuttedPadding = isAdCutted && type === 'youtube' ? 220 : 0;
+	var videoRatio = 0.5625;
+
+
+	if (customRatio && parseFloat(customRatio) > 0) videoRatio = parseFloat(customRatio);
+
+	if (isHasCover) {
+		var coverHeight = t_videoprocessor__getHeight(height, isHasCover, el, videoRatio);
+		var videoWidth = window.innerWidth;
+		var videoHeight = videoWidth * videoRatio;
+		var deltaRatio = 1;
+
+		// recalculate deltaRatio if video height less than div height
+		if (videoHeight - adCuttedPadding < coverHeight) {
+			deltaRatio = videoHeight < coverHeight ? coverHeight / videoHeight : videoHeight / coverHeight;
+			deltaRatio += 0.02;
 		}
-		if (height.indexOf('vh') !== -1) {
-			var wh = window.innerHeight;
-			parsedHeight = parseInt(height) || 0;
-			div_height = Math.floor(wh * (parsedHeight / 100));
-		} else {
-			div_height = parseInt(height) || 0;
-		}
-		
-		var div_width = window.innerWidth;
-		var video_width = div_width;
-		video_height = video_width * video_ratio;
-		
-		var vw2 = video_width;
-		var vh2 = video_height;
-		var vh3 = video_height;
-		var delta_coef = 1;
-		
-		// increase video block height, to prevent visibility ad at the bottom
-		if (type === 'youtube' && noadcut !== 'yes') {
-			vh2 = vh2 + 220;
-			vh3 = video_height - 220;
-		}
-		
-		// count delt_coef if video height less than div height
-		if (vh3 < div_height) {
-			if (video_height < div_height) {
-				delta_coef = div_height / video_height + 0.02;
-			} else {
-				delta_coef = video_height / div_height + 0.02;
-			}
-		}
-		
-		var zoom_video_width = Math.floor(vw2 * delta_coef);
-		var zoom_video_height = Math.floor(vh2 * delta_coef);
-		var heightDelta = zoom_video_height - div_height;
-		var widthDelta = zoom_video_width - div_width;
-		
-		iframe.style.height = zoom_video_height + 'px';
-		iframe.style.width = zoom_video_width + 'px';
-		
+
+		var zoomedWidth = Math.floor(videoWidth * deltaRatio);
+		var zoomedHeight = Math.floor((videoHeight + adCuttedPadding) * deltaRatio);
+		var heightDelta = zoomedHeight - coverHeight;
+		var widthDelta = zoomedWidth - videoWidth;
+
+		if (iframe) iframe.style.height = zoomedHeight + 'px';
+		if (iframe) iframe.style.width = zoomedWidth + 'px';
+
 		if (type === 'html5') {
-			video.style.height = zoom_video_height + 'px';
-			video.style.width = zoom_video_width + 'px';
+			video.style.height = zoomedHeight + 'px';
+			video.style.width = zoomedWidth + 'px';
 		}
-		
-		if (heightDelta > 0) {
-			iframe.style.marginTop = -Math.floor(heightDelta / 2) + 'px';
-		} else {
-			iframe.style.marginTop = '0';
-		}
-		if (widthDelta > 0) {
-			iframe.style.marginLeft = -Math.floor(widthDelta / 2) + 'px';
-		} else {
-			iframe.style.marginLeft = '0';
-		}
+
+		if (iframe) iframe.style.marginTop = heightDelta > 0 ? -Math.floor(heightDelta / 2) + 'px' : '0';
+		if (iframe) iframe.style.marginLeft = widthDelta > 0 ? -Math.floor(widthDelta / 2) + 'px' : '0';
+
 	} else {
-		if (!height) {
-			video_height = Math.floor(el.offsetWidth * video_ratio);
-		}
-		if (height && height.indexOf('vh') > -1) {
-			parsedHeight = parseInt(height) || 0;
-			video_height = Math.floor(window.innerHeight * (parsedHeight / 100));
-		} else if (height) {
-			video_height = parseInt(height) || 0;
-		}
-		
-		iframe.style.width = '100%';
-		iframe.style.height = video_height + 'px';
+		var noCoverHeight = t_videoprocessor__getHeight(height, isHasCover, el, videoRatio);
+		if (iframe) iframe.style.width = '100%';
+		if (iframe) iframe.style.height = noCoverHeight + 'px';
 	}
 }
 
 /**
- * @param {string} src - link to video
- * @param {string} nocover - nocover param
- * @param {string} nomute - nomute param
+ * calculate and get height for video element
+ *
+ * @param {string} height
+ * @param {Boolean} isHasCover
+ * @param {HTMLElement} el
+ * @param {number} videoRatio
+ * @return {number} - height
+ */
+function t_videoprocessor__getHeight(height, isHasCover, el, videoRatio) {
+	var calculatedHeight;
+	if (!height) {
+		if (isHasCover) {
+			height = '100vh';
+		} else {
+			calculatedHeight = Math.floor(el.offsetWidth * videoRatio);
+		}
+	}
+	if (height.indexOf('vh') !== -1) {
+		var parsedHeight = parseInt(height, 10) || 0;
+		calculatedHeight = Math.floor(document.documentElement.clientHeight * (parsedHeight / 100));
+	} else if (height) {
+		calculatedHeight = parseInt(height, 10) || 0;
+	}
+	return calculatedHeight || 0;
+}
+
+function t_videoprocessor__getHeightFromAttr(height) {
+	if (!height) return 0;
+	if (height.indexOf('vh') !== -1) {
+		return parseInt(height, 10) * document.documentElement.clientHeight / 100;
+	} else {
+		return parseInt(height, 10);
+	}
+}
+
+/**
+ * @param {Object} videoObject - link to video
  * @returns {string} - transformed src
  */
-function processSrc(src, nocover, nomute) {
-	if (src.indexOf('https://www.youtube.com/embed') === -1) {
-		src = 'https://www.youtube.com/embed' + (src[0] === '/' ? src : '/' + src);
+function t_videoprocessor__generateYoutubeURL(videoObject) {
+	var src = videoObject['url-youtube'];
+	var protocolAndDomain = 'https://www.youtube.com/embed';
+	var hasCover = videoObject['cover'];
+	var isMute = videoObject['mute'];
+
+	// if contains only videoID
+	if (src.indexOf(protocolAndDomain) === -1) {
+		if (src.indexOf('/') === -1) src = '/' + src;
+		// append to protocol and domain video ID, it will look like: https://www.youtube.com/embed/{URL}
+		src = protocolAndDomain.concat(src);
 	}
-	
-	if (src.indexOf('?') !== -1) {
-		src += '&';
-	} else {
-		src += '?';
-	}
-	
-	var extractVideoId = function (src) {
-		var parts = src.split('/'),
-			neededPart = null;
-		for (var i = 0, l = parts.length; i < l; i++) {
-			if (parts[i] === 'embed') {
-				neededPart = parts[i + 1];
-			}
-		}
-		if (neededPart.indexOf('?') !== -1) {
-			neededPart = neededPart.split('?')[0];
-		}
-		return neededPart;
-	};
+
+	// adding separator for parameters in URL
+	src += src.indexOf('?') === -1 ? '?' : '&';
+
 	var currentLocation = location.protocol + '//' + location.host;
-	
-	if (nocover !== 'yes') {
-		src =
-			(src[src.length - 1] === '/' ? src : src) +
-			'autoplay=1&loop=1&enablejsapi=1&&playerapiid=featuredytplayer&controls=0&modestbranding=1&rel=0&showinfo=0&color=white&iv_load_policy=3&theme=light&wmode=transparent&origin=' +
-			currentLocation +
-			'&playlist=' +
-			extractVideoId(src);
+
+	var videoID = src.replace(protocolAndDomain + '/', '');
+	var firstSeparator = videoID.indexOf('?');
+	if (firstSeparator !== -1) videoID = videoID.slice(0, firstSeparator);
+
+	if (hasCover) {
+		src += 'autoplay=1&loop=1&enablejsapi=1&&playerapiid=featuredytplayer&controls=0&modestbranding=1&rel=0&showinfo=0&color=white&iv_load_policy=3&theme=light&wmode=transparent&origin=' +
+			currentLocation + '&playlist=' + videoID;
 	} else {
-		src =
-			(src[src.length - 1] === '/' ? src : src) +
-			'autoplay=0&loop=0&enablejsapi=1&&playerapiid=featuredytplayer&controls=1&modestbranding=1&rel=0&showinfo=0&color=black&iv_load_policy=3&theme=dark&wmode=transparent&origin=' +
+		src += 'autoplay=0&loop=0&enablejsapi=1&&playerapiid=featuredytplayer&controls=1&modestbranding=1&rel=0&showinfo=0&color=black&iv_load_policy=3&theme=dark&wmode=transparent&origin=' +
 			currentLocation;
 	}
-	
-	//todo после того, как уберут чекбокс с 'не выключать звук у видео', убрать условие и сделать
-	// mute по дефолту
-	if (nomute !== 'yes') {
-		src += '&mute=1';
-	}
-	
+
+	if (isMute) src += '&mute=1';
+
 	return src;
 }
 
 /**
- * @param {HTMLElement} div - created div element
- * @param {object} player - current player
- * @param {string} nomute - nomute param
+ * which user scroll the page, background video can be pausing;
+ * and smooth muting its volume (not for bg cover)
+ *
+ * @param {HTMLElement} el - current element, which include YouTube iframe
+ * @param {Object} player
+ * @param {Boolean} isMute
  */
-function onYouTubePlayerReady_do(div, player, nomute) {
-	var timer;
-	var timer_count = 0;
+function t_videoprocessor__pauseAndPlayYouTubeVideo(el, player, isMute) {
 	window.addEventListener('scroll', function () {
-		if (timer) {
-			window.clearTimeout(timer);
-			if (timer_count >= 15) {
-				timer_player_do(div, player, nomute);
-				timer_count = 0;
-			}
-			timer_count++;
+		var viewportTopPos = window.pageYOffset;
+		var viewportHeight = document.documentElement.clientHeight;
+		var viewportBottomPos = viewportTopPos + viewportHeight;
+		var videoTopPos = el.getBoundingClientRect().top + viewportTopPos;
+		var videoHeight = el.offsetHeight;
+		var videoBottomPos = videoTopPos + videoHeight;
+		var isInvisible = el.getAttribute('data-video-invisible') === 'y';
+		var playerState = player.getPlayerState();
+		var padding = 500;
+
+		var currentPosition;
+		if (viewportBottomPos > videoTopPos && viewportTopPos <= videoBottomPos) {
+			currentPosition = 'inside';
+		} else if (
+			(viewportBottomPos < videoTopPos && viewportBottomPos > videoTopPos - padding) ||
+			(viewportTopPos > videoBottomPos && viewportTopPos < videoBottomPos + padding)) {
+			currentPosition = 'near';
+		} else {
+			currentPosition = 'far';
 		}
-		timer = window.setTimeout(function () {
-			timer_player_do(div, player, nomute);
-			timer_count = 0;
-		}, 100);
+
+		// playerState:
+		//-1 – воспроизведение видео не началось
+		// 0 – воспроизведение видео завершено
+		// 1 – воспроизведение
+		// 2 – пауза
+		// 3 – буферизация
+		// 5 – видео находится в очереди
+
+		switch (currentPosition) {
+			case 'inside':
+				if (playerState === -1 || playerState === 3 || playerState === 5 || (playerState === 2 && isInvisible)) {
+					player.playVideo();
+					el.removeAttribute('data-video-invisible');
+				}
+				if (!isMute) {
+					var muteStatePos = 'inside';
+					if (videoTopPos > videoBottomPos - 200) muteStatePos = 'near';
+					if (videoTopPos > videoBottomPos - 100 || viewportBottomPos < videoTopPos + 200) muteStatePos = ' far';
+					t_videoprocessor__smoothMuteSound(player, muteStatePos);
+				}
+				break;
+			case 'near':
+				el.setAttribute('data-video-invisible', 'y');
+				t_videoprocessor__pauseVideo(player, playerState);
+				break;
+			case 'far':
+				t_videoprocessor__pauseVideo(player, playerState);
+				break;
+		}
 	});
 }
 
 /**
- * @param {HTMLElement} frame - created div element
- * @param {object} player - current player
- * @param {string} nomute - nomute param
+ * @param {Object} player
+ * @param {string} muteStatePos
  */
-function timer_player_do(frame, player, nomute) {
-	var frameOffsetTop = frame.getBoundingClientRect().top + window.pageYOffset;
-	var frameWidth = frame.offsetWidth;
-	var windowTopPos = window.pageYOffset;
-	var viewportHeight = window.innerHeight;
-	var playerState = player.getPlayerState();
-	
-	if (windowTopPos + viewportHeight > frameOffsetTop
-		&& windowTopPos <= frameOffsetTop + frameWidth) {
-		if (playerState !== 1) {
-			player.playVideo();
-		}
-		if (nomute === 'yes') {
-			if (windowTopPos > frameOffsetTop + frameWidth - 100) {
-				player.setVolume(30);
-			} else if (windowTopPos > frameOffsetTop + frameWidth - 200) {
-				player.setVolume(70);
-			} else if (windowTopPos + viewportHeight < frameOffsetTop + 200) {
-				player.setVolume(30);
-			} else {
-				player.setVolume(100);
-			}
-		}
-	} else if (windowTopPos + viewportHeight < frameOffsetTop && windowTopPos + viewportHeight >
-		frameOffsetTop - 500) {
-		if (playerState !== 2) {
-			player.playVideo();
-			player.pauseVideo();
-		}
-	} else if (windowTopPos > frameOffsetTop + frameWidth && windowTopPos < frameOffsetTop +
-		frameWidth + 500) {
-		if (playerState !== 2) {
-			player.pauseVideo();
-		}
-	} else if (playerState !== 2) {
+function t_videoprocessor__smoothMuteSound(player, muteStatePos) {
+	switch (muteStatePos) {
+		case 'far':
+			player.setVolume(30);
+			break;
+		case 'near':
+			player.setVolume(70);
+			break;
+		case 'inside':
+			player.setVolume(100);
+			break;
+	}
+}
+
+/**
+ * @param {Object} player
+ * @param {number} playerState
+ */
+function t_videoprocessor__pauseVideo(player, playerState) {
+	if (playerState !== 2) {
 		player.pauseVideo();
 	}
 }
 
 /**
- * load youtube api
- */
-function load_youtube_api() {
-	if (window.loadytapi_flag !== 'yes') {
-		window.loadytapi_flag = 'yes';
-		var tag = document.createElement('script');
-		tag.src = 'https://www.youtube.com/iframe_api';
-		var firstScriptTag = document.getElementsByTagName('script')[0];
-		firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-	}
-}
-
-(function () {
-	/**
-	 * video load processor
-	 */
-	function VideoLoadProcessor() {
-		this.setScrollListener();
-	}
-	
-	VideoLoadProcessor.prototype.videoTags = [];
-	VideoLoadProcessor.prototype.defaultConfig = {
-		isNeedStop: false,
-	};
-	VideoLoadProcessor.prototype.videoConfigs = [];
-	VideoLoadProcessor.prototype.registerNewVideo = function (video, config) {
-		if (!(video instanceof HTMLVideoElement)) {
-			throw new Error('Wrong tag passed into registerNewVideo');
-		}
-		if (this.videoTags.indexOf(video) === -1) {
-			this.videoTags.push(video);
-			this.videoConfigs.push(typeof config == 'undefined' ? this.defaultConfig : config);
-			this.scrollCb('', true);
-			return true;
-		}
-		return false;
-	};
-	
-	VideoLoadProcessor.prototype.unergisterVideo = function (video) {
-		if (!(video instanceof HTMLVideoElement)) {
-			throw new Error('Wrong tag passed into unregisterNewVideo');
-		}
-		var index;
-		if ((index = this.videoTags.indexOf(video)) !== -1) {
-			if (typeof video.remove == 'function') {
-				if (video.parentNode !== null) {
-					video.parentNode.removeChild(video);
-				}
-			} else if (video.parentNode) {
-				video.parentNode.removeChild(video);
-			}
-			this.pauseVideo(video, this.videoConfigs[index]);
-			this.videoTags.splice(index, 1);
-			this.videoConfigs.splice(index, 1);
-			return true;
-		}
-		return false;
-	};
-	
-	VideoLoadProcessor.prototype.pauseVideo = function (video, config) {
-		if (!config) {
-			throw new Error('Wrong config type!');
-		}
-		video.pause();
-		if (config.isNeedStop) {
-			video.load();
-		}
-	};
-	
-	VideoLoadProcessor.prototype.setScrollListener = function () {
-		window.addEventListener('scroll', t_throttle(this.scrollCb.bind(this), 200));
-	};
-	
-	VideoLoadProcessor.prototype.scrollCb = function (e, firstInvoke) {
-		var windowHeight = window.innerHeight;
-		var _v = null;
-		var _vrect;
-		for (var i = 0, l = this.videoTags.length; i < l; i++) {
-			_v = this.videoTags[i];
-			_vrect = this.getVideoBoundingRect(_v, false);
-			// set fade volume
-			if (Math.abs(_vrect.top) < windowHeight && Math.abs(_vrect.top) > windowHeight / 2) {
-				var vol = 1 - (Math.abs(_vrect.top) - windowHeight / 2) / (windowHeight / 2) - 0.2;
-				if (vol > 0 && vol <= 1 && _v.volume != 0) {
-					_v.volume = vol;
-				}
-			}
-			// then pause
-			if (Math.abs(_vrect.top) > windowHeight || _vrect.height == 0 /*display : none*/) {
-				this.pauseVideo(_v, this.videoConfigs[i]);
-				continue;
-			}
-			
-			if (firstInvoke) {
-				_v.muted = true;
-				_v.play();
-			}
-			
-			if (_v.paused && _v.loop) {
-				_v.muted = true;
-				_v.play();
-			}
-		}
-	};
-	
-	VideoLoadProcessor.prototype.getVideoObject = function (video) {
-		var l = this.videoTags.length;
-		//TODO условие раньше было i > l, это не ошибка?
-		for (var i = 0; i < l; i++) {
-			var vo = this.videoTags[i];
-			if (vo.v === video) {
-				return vo;
-			}
-		}
-		return null;
-	};
-	
-	VideoLoadProcessor.prototype.getVideoBoundingRect = function (video, isNeedParent) {
-		if (typeof isNeedParent == 'undefined') {
-			isNeedParent = true;
-		}
-		var parent = null;
-		if (isNeedParent) {
-			parent = video.closest('.r');
-			if (!parent) {
-				parent = video;
-			}
-		} else {
-			parent = video;
-		}
-		return parent.getBoundingClientRect();
-	};
-	window.videoLoadProcessor = new VideoLoadProcessor();
-})();
-
-/**
  * some analog of promise
- *
- * @param {object} obj - if funcName is function
- * @param {Function} okFunc - do okFunc
- */
-/**
- * some analog of promise
+ * we cannot use here t_onFuncLoad, because after getting YT object, we need check is YT.Player is ready to use
  *
  * @param {String} obj - if obj is object
  * @param {Function} okFunc - do okFunc
  */
-function videoprocessor_onFuncLoad(obj, okFunc) {
-	if (typeof window[obj] === 'object') {
+function videoProcessor_onFuncLoad(obj, okFunc) {
+	var timer;
+	if (typeof window[obj] === 'object' && typeof window[obj].Player === 'function') {
 		okFunc();
 	} else {
-		var timer = setTimeout(function() {
-			if (typeof window[obj] === 'object') {
-				clearTimeout(timer);
+		timer = setInterval(function () {
+			if (typeof window[obj] === 'object' && typeof window[obj].Player === 'function') {
 				okFunc();
+				clearInterval(timer);
+				timer = 0;
 			}
-			if (document.readyState === 'complete' && typeof window[obj] !== 'object') {
-				clearTimeout(timer);
-				throw new Error(obj + ' is undefined');
-			}
-		}, 500);
+		}, 100);
 	}
+	window.addEventListener('load', function () {
+		setTimeout(function () {
+			if (timer) {
+				if (typeof window[obj] === 'object' && typeof window[obj].Player === 'function') {
+					okFunc();
+					clearInterval(timer);
+				} else {
+					clearInterval(timer);
+					throw new Error(obj + ' is undefined');
+				}
+			}
+		}, 5000);
+	});
 }
 
 if (!Element.prototype.matches) {
@@ -844,14 +537,12 @@ if (!Element.prototype.matches) {
 if (!Element.prototype.closest) {
 	Element.prototype.closest = function (s) {
 		var el = this;
-		
 		while (el && el.nodeType === 1) {
 			if (Element.prototype.matches.call(el, s)) {
 				return el;
 			}
 			el = el.parentElement || el.parentNode;
 		}
-		
 		return null;
 	};
 }
