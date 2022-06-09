@@ -54,12 +54,13 @@
 		videoObject['loop'] = videoObject['noloop'] !== 'yes';
 		videoObject['cover'] = videoObject['nocover'] !== 'yes';
 
-		if (window.isMobile) return;
 		t_videoprocessor__setYoutubePlayer(el, videoObject);
 		var customHeight = t_videoprocessor__getHeightFromAttr(height);
 		var calculatedHeight = parseInt(el.getAttribute('data-content-cover-updated-height'), 10) || 0;
 		var maxHeight = calculatedHeight > customHeight ? el.getAttribute('data-content-cover-updated-height') : height;
 		setWidthAndHeightVideo(el, maxHeight, 'youtube');
+
+		if (window.isMobile) return;
 
 		window.addEventListener('resize', function () {
 			if (videoObject['cover']) {
@@ -155,10 +156,18 @@ function t_videoprocessor__processHTML5Video(el, options) {
 
 	var videoWrapper = t_videoprocessor__createHTML5Video(options);
 	el.insertAdjacentElement('beforeend', videoWrapper);
-	setWidthAndHeightVideo(videoWrapper, options.height + 'px', 'html5');
+	// setTimeout need to set height after recalculating wrapper height
+	setTimeout(function () {
+		var coverWrapper = videoWrapper.closest('.t-cover__carrier');
+		var coverWrapperHeight = coverWrapper ? window.getComputedStyle(coverWrapper).height : '0';
+		setWidthAndHeightVideo(videoWrapper, coverWrapperHeight, 'html5');
+	});
+
 
 	window.addEventListener('resize', function () {
-		setWidthAndHeightVideo(videoWrapper, options.height + 'px', 'html5');
+		var coverWrapper = videoWrapper.closest('.t-cover__carrier');
+		var coverWrapperHeight = coverWrapper ? window.getComputedStyle(coverWrapper).height : '0';
+		setWidthAndHeightVideo(videoWrapper, coverWrapperHeight, 'html5');
 	});
 
 	window.addEventListener('scroll', t_throttle(function () {
@@ -192,7 +201,10 @@ function t_videoprocessor__pauseAndPlayHTMLVideo(videoWrapper) {
 
 	switch (currentPosition) {
 		case 'inside':
-			video.play();
+			var playPromise = video.play();
+			if (playPromise) playPromise.then().catch(function (e) {
+				console.log(e);
+			});
 			break;
 		case 'near':
 			video.pause();
@@ -236,7 +248,10 @@ function t_videoprocessor__createHTML5Video(options) {
 	video.addEventListener('canplay', function () {
 		if (options.autoplay) {
 			video.muted = true;
-			video.play();
+			var playPromise = video.play();
+			if (playPromise) playPromise.catch(function (e) {
+				console.log(e);
+			});
 		}
 	});
 
@@ -451,11 +466,10 @@ function t_videoprocessor__pauseAndPlayYouTubeVideo(el, player, isMute) {
 				}
 				break;
 			case 'near':
-				el.setAttribute('data-video-invisible', 'y');
-				t_videoprocessor__pauseVideo(player, playerState);
+				t_videoprocessor__pauseVideo(player, playerState, el);
 				break;
 			case 'far':
-				t_videoprocessor__pauseVideo(player, playerState);
+				t_videoprocessor__pauseVideo(player, playerState, el);
 				break;
 		}
 	});
@@ -482,8 +496,10 @@ function t_videoprocessor__smoothMuteSound(player, muteStatePos) {
 /**
  * @param {Object} player
  * @param {number} playerState
+ * @param {HTMLElement} el
  */
-function t_videoprocessor__pauseVideo(player, playerState) {
+function t_videoprocessor__pauseVideo(player, playerState, el) {
+	el.setAttribute('data-video-invisible', 'y');
 	if (playerState !== 2) {
 		player.pauseVideo();
 	}
