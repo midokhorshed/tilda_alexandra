@@ -31,7 +31,7 @@ function t_menusub_init(recid) {
 		var submenu = submenuWrapper.querySelector('.t-menusub__menu');
 
 		t_menusub__appendArrow(submenuWrapper, hookLinks);
-		if (window.isMobile) {
+		if (window.isMobile || 'ontouchend' in document) {
 			t_menusub__setUpMenuMobile(submenuWrapper, submenu, hookLinks, recid);
 		} else {
 			t_menusub__setUpMenuDesktop(submenuWrapper, submenu, hookLinks);
@@ -181,8 +181,8 @@ function t_menusub__showSubmenu(curAnchor, submenu, vIndent) {
 	if (window.innerWidth <= 980) positionY = 0;
 
 	var absoluteHookPos = curAnchor.getBoundingClientRect().left;
-	var absoluteSubmenuPos = submenu.getBoundingClientRect().left;
-	var customArrowPosLeft = (absoluteHookPos + (anchorWidth / 2) - 20) - absoluteSubmenuPos; // 20 - arrow width
+	var absoluteSubmenuPos = 0;
+	var customArrowPosLeft = 0;
 
 	if (positionX + submenuWidth / 2 < winWidth) {
 		// show in the center of anchor
@@ -190,6 +190,9 @@ function t_menusub__showSubmenu(curAnchor, submenu, vIndent) {
 		// show near left window submenu and add styles for floating arrow
 		if (positionX < 0) {
 			positionX = 10;
+			// update absolute pos value
+			absoluteSubmenuPos = positionX;
+			customArrowPosLeft = (absoluteHookPos + (anchorWidth / 2) - 20) - absoluteSubmenuPos; // 20 - arrow width
 			submenu.classList.add('t-menusub__menu-custompos');
 			submenu.style.setProperty('--custom-pos', customArrowPosLeft + 'px');
 		} else {
@@ -215,6 +218,9 @@ function t_menusub__showSubmenu(curAnchor, submenu, vIndent) {
 		submenu.style.left = '';
 		submenu.style.right = '0';
 		submenu.classList.add('t-menusub__menu-custompos');
+		// update absolute pos value
+		absoluteSubmenuPos = submenu.getBoundingClientRect().left;
+		customArrowPosLeft = (absoluteHookPos + (anchorWidth / 2) - 20) - absoluteSubmenuPos; // 20 - arrow width
 		submenu.style.setProperty('--custom-pos', customArrowPosLeft + 'px');
 	}
 }
@@ -415,6 +421,8 @@ function t_menusub__catchScroll(navLinks) {
 	window.addEventListener('resize', t_throttle(function () {
 		t_menusub__updateSectionsOffsets(sections);
 	}, 200));
+
+	t_menusub__highlightNavLinks(navLinks, sections, sectionToNavigationLinkID, clickedSectionID);
 
 	// update offsets and highlight link after loading page and 1s
 	setTimeout(function () {
