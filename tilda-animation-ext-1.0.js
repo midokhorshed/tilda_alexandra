@@ -1,352 +1,721 @@
 /**
- * tilda-animation-ext use in zero-block when user choose in basic animation 'parallax' or 'fixing'
+ * Only for Zero Block. All settings from animation -> parallax / fixing.
+ * In parallax can be set trigger by scroll or mousemoving, in fixing can be set trigger zone:
+ * on top/middle or bottom of window view
  */
-if (document.readyState != 'loading') {
-  t_animationExt__init();
-} else {
-  document.addEventListener('DOMContentLoaded', t_animationExt__init);
-}
+
+// check browsers that don't support css zoom param and use autoscale
+window.t_animationExt__isOnlyScalable = Boolean(navigator.userAgent.search('Firefox') !== -1 ||
+	Boolean((window.opr && window.opr.addons) || window.opera || navigator.userAgent.indexOf(' OPR/') !== -1));
+
+window.t_animationExt__isMobile = (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+	'ontouchend' in document);
+
+t_onReady(t_animationExt__init);
 
 /**
  * init animation
- * 
- * @returns {void} - if mode is edit
+ *
+ * @returns {void} - if mode is edited
  */
 function t_animationExt__init() {
-  var record = document.querySelector('.t-records');
-  var tMode = record ? record.getAttribute('data-tilda-mode') : '';
-  if (window.isSearchBot === 1
-    || t_animateParallax__checkOldIE()
-    || tMode === 'edit') { return; }
+	var record = document.querySelector('.t-records');
+	var isEditMode = record ? record.getAttribute('data-tilda-mode') === 'edit' : false;
+	if (/Bot/i.test(navigator.userAgent) || t_animateParallax__checkOldIE() || isEditMode) return;
 
-  t_animateFix__wrapEls();
-  t_animateParallax__wrapEls();
+	t_animationExt__wrapFixEls();
+	t_animationExt__wrapParallaxEls();
 
-  setTimeout(function () {
-    t_animateParallax__initScroll();
-    t_animateParallax__initMouse();
-    var mouseElements = document.querySelectorAll('[data-animate-prx="mouse"], [data-animate-prx-res-960="mouse"], [data-animate-prx-res-640="mouse"], [data-animate-prx-res-480="mouse"], [data-animate-prx-res-320="mouse"]');
-    var fixedElements = document.querySelectorAll('[data-animate-fix]:not([data-animate-fix-alw="yes"]), [data-animate-fix-res-960]:not([data-animate-fix-alw-res="yes"]), [data-animate-fix-res-640]:not([data-animate-fix-alw="yes"]),[data-animate-fix-res-480]:not([data-animate-fix-alw="yes"]),[data-animate-fix-res-320]:not([data-animate-fix-alw="yes"])');
-    if (mouseElements.length || fixedElements.length) {
-      var getClientRects = document.body.getClientRects();
-      if (getClientRects.length > 0) {
-        var initHeight = getClientRects[0].height;
-        if ('ResizeObserver' in window) {
-          var bodyHeightResizeObserver_animateParallax = new ResizeObserver(function (entries) {
-            for (var index = 0; index < entries.length; index++) {
-              // body's height is changed
-              if (entries[index].contentRect.height !== initHeight) {
-                getClientRects = document.querySelector('body').getClientRects();
-                if (getClientRects.length > 0) {
-                  initHeight = getClientRects[0].height;
-                  for (var i = 0; i < mouseElements.length; i++) {
-                    var el = mouseElements[i];
-                    t_animateParallax__cashOffsets(el);
-                  }
-                  t_animateFix__cashElsInfo(fixedElements);
-                }
-              }
-            }
-          });
-          bodyHeightResizeObserver_animateParallax.observe(document.querySelector('body'));
-        }
-      }
-    }
-  }, 1000);
+	t_animationExt__isZeroBlocksRender(function () {
+		t_animateParallax__initScroll(); //append to scroll parallax elements topOffset and bottomOffset keys
+		t_animateParallax__initMouse(); //append to mouse parallax elements pathX, pathY and animEl keys
+		var fixedElements = t_animationExt__getElsByBreakpoints('fix', []);
+		var mouseElements = t_animationExt__getElsByBreakpoints('prx', ['mouse']);
 
-  if (window.pageYOffset === 0) {
-    setTimeout(function () {
-      t_animateFix__init();
-    }, 1000);
-  } else {
-    setTimeout(function () {
-      t_animateFix__init();
-    }, 50);
-  }
-}
-
-
-/**
- * analog of promise
- * 
- * @param {Function} funcName - check function
- * @param {Function} okFunc - current function to init
- * @param {number} time - duration
- */
-function t_animationExt__onFuncLoad(funcName, okFunc, time) {
-  if (typeof window[funcName] === 'function') {
-    okFunc();
-  } else {
-    setTimeout(function checkFuncExist() {
-      if (typeof window[funcName] === 'function') {
-        okFunc();
-        return;
-      }
-      if (document.readyState === 'complete' && typeof window[funcName] !== 'function') {
-        throw new Error(funcName + ' is undefined');
-      }
-      setTimeout(checkFuncExist, time || 100);
-    });
-  }
+		// append to mouse parallax elements such params: topOffset, bottomOffset, parentTopOffset, parentBottomOffset
+		// and to fixed elements: topOffset, triggerOffset, trigger, distance, end, fixedWrapperEl
+		t_animationExt__createResizeObserver(fixedElements, mouseElements);
+		t_animateFix__init(fixedElements);
+	});
 }
 
 /**
- * get attribute value
- * 
- * @param {HTMLElement} el - current element
- * @param {string} attr - animation attribute
- * @param {number} res - ?
- * @returns {string | null | undefined} - attribute value (null - if attribute is not defined, undefined - if el attr data-animate-mobile !== 'y')
+ * init animation after zeroblock is rendered
+ *
+ * @param {Function} cb
  */
-function t_animationExt__getAttrByRes(el, attr, res) {
-  var viewportWidth = res || window.innerWidth;
-  var attrValue;
-
-  if (viewportWidth >= 1200) {
-    attrValue = el.getAttribute('data-animate-' + attr);
-    return attrValue;
-  }
-
-  if (el.getAttribute('data-animate-mobile') !== 'y') {
-    el.style.transition = 'none';
-    return;
-  }
-
-  if (viewportWidth >= 960) {
-    attrValue = el.getAttribute('data-animate-' + attr + '-res-960');
-    if (!attrValue && !res) {
-      attrValue = el.getAttribute('data-animate-' + attr);
-    }
-    return attrValue;
-  }
-  if (viewportWidth >= 640) {
-    attrValue = el.getAttribute('data-animate-' + attr + '-res-640');
-    if (!attrValue && !res) {
-      attrValue = el.getAttribute('data-animate-' + attr + '-res-960');
-    }
-    if (!attrValue && !res) {
-      attrValue = el.getAttribute('data-animate-' + attr);
-    }
-    return attrValue;
-  }
-  if (viewportWidth >= 480) {
-    attrValue = el.getAttribute('data-animate-' + attr + '-res-480');
-    if (!attrValue && !res) {
-      attrValue = el.getAttribute('data-animate-' + attr + '-res-640');
-    }
-    if (!attrValue && !res) {
-      attrValue = el.getAttribute('data-animate-' + attr + '-res-960');
-    }
-    if (!attrValue && !res) {
-      attrValue = el.getAttribute('data-animate-' + attr);
-    }
-    return attrValue;
-  }
-  if (viewportWidth >= 320) {
-    attrValue = el.getAttribute('data-animate-' + attr + '-res-320');
-    if (!attrValue && !res) {
-      attrValue = el.getAttribute('data-animate-' + attr + '-res-480');
-    }
-    if (!attrValue && !res) {
-      attrValue = el.getAttribute('data-animate-' + attr + '-res-640');
-    }
-    if (!attrValue && !res) {
-      attrValue = el.getAttribute('data-animate-' + attr + '-res-960');
-    }
-    if (!attrValue && !res) {
-      attrValue = el.getAttribute('data-animate-' + attr);
-    }
-    return attrValue;
-  }
+function t_animationExt__isZeroBlocksRender(cb) {
+	var firstAtrboard = document.querySelector('.t396__artboard');
+	if (firstAtrboard) {
+		var timerID = setInterval(function () {
+			if (firstAtrboard.classList.contains('rendered')) {
+				cb();
+				clearTimeout(timerID);
+			}
+		}, 30);
+	}
 }
 
 /**
- * wrap elements
+ *
+ * @param {HTMLElement[]} fixedElements
+ * @param {HTMLElement[]} mouseElements
  */
-function t_animateFix__wrapEls() {
-  var wrappingElements = document.querySelectorAll('[data-animate-fix], [data-animate-fix-res-960], [data-animate-fix-res-640], [data-animate-fix-res-480], [data-animate-fix-res-320]');
-  Array.prototype.forEach.call(wrappingElements, function (wrappingElement) {
-    var resultValue = t_animationExt__getAttrByRes(wrappingElement, 'prx');
-    if (resultValue) {
-      wrappingElement.removeAttribute('data-animate-prx');
-      wrappingElement.removeAttribute('data-animate-prx-res-960');
-      wrappingElement.removeAttribute('data-animate-prx-res-640');
-      wrappingElement.removeAttribute('data-animate-prx-res-480');
-      wrappingElement.removeAttribute('data-animate-prx-res-320');
-    }
-    var currentAtom = wrappingElement.querySelectorAll('.tn-atom');
-    Array.prototype.forEach.call(currentAtom, function (atom) {
-      var parent = atom.parentNode;
-      var div = document.createElement('div');
-      div.classList.add('tn-atom__sticky-wrapper');
-      div.style.display = 'table';
-      div.style.width = 'inherit';
-      div.style.height = 'inherit';
-      var clonedEl = atom.cloneNode(true);
-      div.appendChild(clonedEl);
-      parent.appendChild(div);
-      if (parent) {
-        parent.removeChild(atom);
-      }
-    });
-
-    // if elem has appearance animation, we need to move it to fixed wrapper, because position:fixed doesnt work inside element with transform
-    var currentFixedWrapper = wrappingElement.querySelector('.tn-atom__sticky-wrapper');
-    if (wrappingElement.classList.contains('t-animate')) {
-      wrappingElement.classList.remove('t-animate');
-      if (currentFixedWrapper) {
-        currentFixedWrapper.classList.add('t-animate');
-        var breakpoints = [1200, 960, 640, 480, 320];
-        var atributes = ['style', 'distance', 'duration', 'scale', 'delay'];
-        breakpoints.forEach(function (breakpoint, breakpointIndex) {
-          atributes.forEach(function (attr) {
-            if (breakpointIndex === 0) {
-              currentFixedWrapper.setAttribute('data-animate-' + attr, t_animationExt__getAttrByRes(wrappingElement, attr, breakpoint));
-              wrappingElement.removeAttribute('data-animate-' + attr);
-            } else {
-              currentFixedWrapper.setAttribute('data-animate-' + attr + '-res-' + breakpoint, t_animationExt__getAttrByRes(wrappingElement, attr, breakpoint));
-              wrappingElement.removeAttribute('data-animate-' + attr + + '-res-' + breakpoint);
-            }
-          });
-        });
-      }
-    }
-  });
+function t_animationExt__createResizeObserver(fixedElements, mouseElements) {
+	if (!mouseElements.length && !fixedElements.length) return;
+	var getClientRects = document.body.getClientRects();
+	if (!getClientRects.length || !('ResizeObserver' in window)) return;
+	var initHeight = getClientRects[0].height;
+	var animateParallaxResizeObserver = new ResizeObserver(function (entries) {
+		for (var i = 0; i < entries.length; i++) {
+			if (entries[i].contentRect.height !== initHeight) {
+				initHeight = getClientRects[0].height;
+				mouseElements.forEach(function (mouseEl) {
+					t_animateParallax__cashOffsets(mouseEl);
+				});
+				t_animateFix__cashElsInfo(fixedElements);
+			}
+		}
+	});
+	animateParallaxResizeObserver.observe(document.body);
 }
+
+/**
+ * This function create wrapper for fixed animation elements to prevent mixed styles of element and animation,
+ * remove parallax atributes, if them exists, to prevent double wrapping in t_animateParallax__wrapEls
+ * update and set new animation data-attributes
+ */
+function t_animationExt__wrapFixEls() {
+	var animatedElements = t_animationExt__getElsByBreakpoints('fix', []);
+	var breakpoints = [1200, 960, 640, 480, 320];
+	animatedElements.forEach(function (animatedEl) {
+		var isElHasParallaxAnimation = t_animationExt__getAttrByRes(animatedEl, 'prx', 0);
+		if (isElHasParallaxAnimation) {
+			breakpoints.forEach(function (breakpoint, i) {
+				var attributeName = i === 0 ? 'data-animate-prx' : 'data-animate-prx-res-' + breakpoint;
+				animatedEl.removeAttribute(attributeName);
+			});
+		}
+		var atom = animatedEl.querySelector('.tn-atom');
+		var scaleWrapper = atom.closest('.tn-atom__scale-wrapper');
+		t_animationExt__wrapEl(atom, 'tn-atom__sticky-wrapper', scaleWrapper);
+
+		// if elem has appearance animation, we need to move it to fixed wrapper,
+		// because position:fixed doesn't work inside element with transform
+		var currentFixedWrapper = animatedEl.querySelector('.tn-atom__sticky-wrapper');
+		if (!animatedEl.classList.contains('t-animate') || !currentFixedWrapper) return;
+		animatedEl.classList.remove('t-animate');
+		currentFixedWrapper.classList.add('t-animate');
+		var atributes = ['style', 'distance', 'duration', 'scale', 'delay'];
+		breakpoints.forEach(function (breakpoint, i) {
+			atributes.forEach(function (attr) {
+				var attributeValue = t_animationExt__getAttrByRes(animatedEl, attr, breakpoint);
+				if (i === 0) {
+					currentFixedWrapper.setAttribute('data-animate-' + attr, attributeValue);
+					animatedEl.removeAttribute('data-animate-' + attr);
+				} else {
+					currentFixedWrapper.setAttribute('data-animate-' + attr + '-res-' + breakpoint, attributeValue);
+					animatedEl.removeAttribute('data-animate-' + attr + +'-res-' + breakpoint);
+				}
+			});
+		});
+	});
+}
+
+/**
+ * wrap parallax animated elements
+ */
+function t_animationExt__wrapParallaxEls() {
+	var animatedElements = t_animationExt__getElsByBreakpoints('prx', ['scroll', 'mouse']);
+	animatedElements.forEach(function (animatedEl) {
+		var atom = animatedEl.querySelector('.tn-atom');
+		var scaleWrapper = atom.closest('.tn-atom__scale-wrapper, .tn-atom__sbs-anim-wrapper');
+		t_animationExt__wrapEl(atom, 'tn-atom__prx-wrapper', scaleWrapper);
+
+		//remove from parent backdrop filter
+		var parentElement = atom.closest('.tn-elem');
+		var parentBlurValue = window.getComputedStyle(parentElement).backdropFilter;
+		if (parentElement && parentBlurValue !== 'none') {
+			parentElement.style.backdropFilter = '';
+			var wrapper = atom.closest('.tn-atom__prx-wrapper');
+			if (wrapper) wrapper.style.backdropFilter = parentBlurValue;
+		}
+	});
+}
+
+
+/*============= FIXED ANIMATED ELEMENTS ==============*/
 
 /**
  * animate fixed elements
- * 
+ *
+ * @param {(HTMLElement &
+ * {
+ * topOffset:number,
+ * triggerOffset:number,
+ * trigger: number,
+ * distance:number,
+ * end:number,
+ * fixedWrapperEl:HTMLElement
+ * }
+ * )[]} fixedElements - fixed elements
  * @returns {void}
  */
-function t_animateFix__init() {
-  var fixedElements = document.querySelectorAll("[data-animate-fix]:not([data-animate-fix-alw='yes']), [data-animate-fix-res-960]:not([data-animate-fix-alw-res='yes']), [data-animate-fix-res-640]:not([data-animate-fix-alw='yes']),[data-animate-fix-res-480]:not([data-animate-fix-alw='yes']),[data-animate-fix-res-320]:not([data-animate-fix-alw='yes'])");
-  var alwaysFixedElements = document.querySelectorAll("[data-animate-fix][data-animate-fix-alw='yes'], [data-animate-fix-res-960][data-animate-fix-alw='yes'], [data-animate-fix-res-640][data-animate-fix-alw='yes'],[data-animate-fix-res-480][data-animate-fix-alw='yes'],[data-animate-fix-res-320][data-animate-fix-alw='yes']");
-  var stopFixing = false;
+function t_animateFix__init(fixedElements) {
+	if (!fixedElements.length) return;
 
-  if (!fixedElements.length) {
-    return;
-  }
+	t_animateFix__cashElsInfo(fixedElements);
+	t_animateFix__updatePositions(fixedElements, false);
 
-  t_animateFix__cashElsInfo(fixedElements);
-  t_animateFix__cashElsInfo(alwaysFixedElements);
+	var allRecords = document.getElementById('allrecords');
+	var isLazyActive = allRecords ? allRecords.getAttribute('data-tilda-lazy') === 'yes' : false;
+	if (window.lazy === 'y' || isLazyActive) t_onFuncLoad('t_lazyload_update', t_lazyload_update);
 
-  t_animateFix__updatePositions(fixedElements);
-  t_animateFix__positionAlwaysFixed(alwaysFixedElements);
-  var allRecords = document.getElementById('allrecords');
-  var lazyLoad = allRecords ? allRecords.getAttribute('data-tilda-lazy') : null;
-  if (window.lazy === 'y' || lazyLoad === 'yes') {
-    t_animationExt__onFuncLoad('t_lazyload_update', function () {
-      t_lazyload_update();
-    });
-  }
+	window.addEventListener('resize', t_throttle(function () {
+		t_animateFix__cashElsInfo(fixedElements);
+		t_animateFix__updatePositions(fixedElements, true);
+	}, 100));
 
-  window.addEventListener('resize', t_throttle(function () {
-    t_animateFix__cashElsInfo(fixedElements);
-    t_animateFix__cashElsInfo(alwaysFixedElements);
-    t_animateFix__updatePositions(fixedElements, true);
-    t_animateFix__positionAlwaysFixed(alwaysFixedElements);
-  }, 100));
+	window.addEventListener('scroll', t_throttle(function () {
+		t_animateFix__updatePositions(fixedElements, false);
+	}, 30));
 
-  window.addEventListener('scroll', t_throttle(function () {
-    if (stopFixing) { return; }
-    t_animateFix__updatePositions(fixedElements, false);
-  }, 30));
-
-  // catch events of window height changes it may be caused by tabs or "show more" button
-  var zeroBlocks = document.querySelectorAll('.t396');
-  Array.prototype.forEach.call(zeroBlocks, function (zeroBlock) {
-    zeroBlock.addEventListener('displayChanged', function () {
-      if (stopFixing) { return; }
-      setTimeout(function () {
-        t_animateFix__cashElsInfo(fixedElements);
-        t_animateFix__updatePositions(fixedElements, true);
-      }, 10);
-    });
-  });
+	// catch events of window height changes it may be caused by tabs or "show more" button
+	var zeroBlocks = document.querySelectorAll('.t396');
+	Array.prototype.forEach.call(zeroBlocks, function (zeroBlock) {
+		zeroBlock.addEventListener('displayChanged', t_throttle(function () {
+			t_animateFix__cashElsInfo(fixedElements);
+			t_animateFix__updatePositions(fixedElements, true);
+		}, 30));
+	});
 }
 
 /**
- * animated elements with always fixed position
- * 
- * @param {NodeList} alwaysFixedEls - current elements list
- */
-function t_animateFix__positionAlwaysFixed(alwaysFixedEls) {
-  Array.prototype.forEach.call(alwaysFixedEls, function (alwaysFixedEl) {
-    alwaysFixedEl.style.position = 'fixed';
-    alwaysFixedEl.style.top = alwaysFixedEl.triggerOffset + 'px';
-  });
-}
-
-/**
- * 
- * @param {NodeList} fixedEls - fixed elements
+ *
+ * @param {(HTMLElement &
+ * {
+ * topOffset:number,
+ * triggerOffset:number,
+ * trigger: number,
+ * distance:number,
+ * end:number,
+ * fixedWrapperEl:HTMLElement
+ * }
+ * )[]} fixedEls - fixed elements
  * @param {boolean} isPageResized - boolean value of resizing page
  * @returns {void}
  */
 function t_animateFix__updatePositions(fixedEls, isPageResized) {
-  var scrollTop = window.pageYOffset;
+	var scrollTop = window.pageYOffset;
+	fixedEls.forEach(function (fixedEl) {
+		if (fixedEl.distance === 0) {
+			// fix if user resize screen which animation is played (and element still has position fixed)
+			if (isPageResized) {
+				fixedEl.fixedWrapperEl.style.position = '';
+				fixedEl.fixedWrapperEl.style.top = '';
+				fixedEl.fixedWrapperEl.classList.remove('t-sticky_going');
+				fixedEl.fixedWrapperEl.classList.remove('t-sticky_ended');
+			}
+			return;
+		}
+		var zoomValue = t_animationExt__getZoom(fixedEl);
+		var triggerPosition = scrollTop + (fixedEl.triggerOffset * zoomValue);
 
-  for (var i = 0; i < fixedEls.length; i++) {
-    var el = fixedEls[i];
-    var zoomValue = t_animationExt__getZoom(el);
-    if (el.distance == 0) return;
+		// set difference between parent and scaled element offsets for Firefox/Opera that uses autoscale
+		var scaledWrapper = fixedEl.querySelector('.tn-atom__scale-wrapper');
+		if (window.t_animationExt__isOnlyScalable && scaledWrapper &&
+			fixedEl.fixedWrapperEl && fixedEl.fixedWrapperEl.style.position !== 'fixed') {
+			var elTopPos = fixedEl.getBoundingClientRect().top;
+			var scaleTopPos = scaledWrapper.getBoundingClientRect().top;
+			var difference = elTopPos - scaleTopPos;
+			fixedEl.setAttribute('data-scaled-diff', difference.toString());
+		}
 
-    if (!t_animationExt__isOnlyScalableElem()) {
-      var trigger = scrollTop + (el.triggerOffset * zoomValue);
-    } else {
-      var trigger = scrollTop + el.triggerOffset;
-    }
-    var isAfterStart = trigger >= el.topOffset;
-    var isBeforeStart = trigger < el.topOffset;
-    var isBeforeEnd = el.end > trigger;
-    var isAfterEnd = el.end <= trigger;
+		// update trigger position for Firefox/Opera that uses autoscale
+		var diff = 0;
+		if (window.t_animationExt__isOnlyScalable && scaledWrapper) {
+			diff = fixedEl.getAttribute('data-scaled-diff') || '0';
+			diff = parseInt(diff, 10);
+			triggerPosition = scrollTop + fixedEl.triggerOffset + diff;
+		}
 
-    // if element is located between start and end
-    if ((isAfterStart && isBeforeEnd && (el.fixedWrapperEl && !el.fixedWrapperEl.classList.contains('t-sticky_going') || isPageResized))
-      || (isBeforeEnd && el.fixedWrapperEl && el.fixedWrapperEl.classList.contains('t-sticky_ended'))) {
-      el.style.transform = '';
-      el.fixedWrapperEl.style.position = 'fixed';
-      el.fixedWrapperEl.style.top = el.triggerOffset + 'px';
-      // if (isSafari) {
-      //   $(el).css({"position":"fixed"});
-      // }
-      el.fixedWrapperEl.classList.add('t-sticky_going');
-      el.fixedWrapperEl.classList.remove('t-sticky_ended');
-    }
-    // if element is located under end
-    if (isAfterEnd && el.fixedWrapperEl && !el.fixedWrapperEl.classList.contains('t-sticky_ended')) {
-      var distanceWithoutZoom = t_animationExt__isOnlyScalableElem() ? el.distance : (el.distance / zoomValue);
-      el.style.transform = 'translateY(' + distanceWithoutZoom + 'px)';
-      el.fixedWrapperEl.style.top = '';
-      el.fixedWrapperEl.style.position = '';
-      // if (isSafari) {
-      //   $(el).css({"position":""});
-      // }
-      el.fixedWrapperEl.classList.remove('t-sticky_going');
-      el.fixedWrapperEl.classList.add('t-sticky_ended');
-    }
-    // if element is located above start
-    if (isBeforeStart && el.fixedWrapperEl && el.fixedWrapperEl.classList.contains('t-sticky_going')) {
-      el.fixedWrapperEl.style.top = '';
-      el.fixedWrapperEl.style.position = '';
-      // if (isSafari) {
-      //   $(el).css({"position":""});
-      // }
-      el.fixedWrapperEl.classList.remove('t-sticky_going');
-    }
-  }
+		var isAfterStart = triggerPosition >= fixedEl.topOffset;
+		var isBeforeStart = triggerPosition < fixedEl.topOffset;
+		var isBeforeEnd = fixedEl.end > triggerPosition;
+		var isAfterEnd = fixedEl.end <= triggerPosition;
+		var isAnimationActivated = fixedEl.fixedWrapperEl ? fixedEl.fixedWrapperEl.classList.contains('t-sticky_going') : false;
+		var isAnimationEnded = fixedEl.fixedWrapperEl ? fixedEl.fixedWrapperEl.classList.contains('t-sticky_ended') : false;
+
+		if (isAfterStart && isBeforeEnd && (!isAnimationActivated || isPageResized) || isBeforeEnd && isAnimationEnded) {
+			fixedEl.style.transform = '';
+			fixedEl.fixedWrapperEl.style.position = 'fixed';
+			fixedEl.fixedWrapperEl.style.top = fixedEl.triggerOffset + diff + 'px';
+			fixedEl.fixedWrapperEl.classList.add('t-sticky_going');
+			fixedEl.fixedWrapperEl.classList.remove('t-sticky_ended');
+		}
+
+		if (isAfterEnd && !isAnimationEnded) {
+			var distance = window.t_animationExt__isOnlyScalable ? fixedEl.distance : (fixedEl.distance / zoomValue);
+			fixedEl.style.transform = 'translateY(' + distance + 'px)';
+			fixedEl.fixedWrapperEl.style.top = '';
+			fixedEl.fixedWrapperEl.style.position = '';
+			fixedEl.fixedWrapperEl.classList.remove('t-sticky_going');
+			fixedEl.fixedWrapperEl.classList.add('t-sticky_ended');
+		}
+
+		if (isBeforeStart && isAnimationActivated) {
+			fixedEl.fixedWrapperEl.style.top = '';
+			fixedEl.fixedWrapperEl.style.position = '';
+			fixedEl.fixedWrapperEl.classList.remove('t-sticky_going');
+		}
+	});
 }
 
 /**
- * @returns {boolean} - value is only scalable elem
+ * cash element information
+ *
+ * @param {(HTMLElement &
+ * {
+ * topOffset:number,
+ * triggerOffset:number,
+ * trigger: number,
+ * distance:number,
+ * end:number,
+ * fixedWrapperEl:HTMLElement
+ * }
+ * )[]} fixedEls - fixed elements
  */
-function t_animationExt__isOnlyScalableElem() {
-  var isFirefox = navigator.userAgent.search('Firefox') !== -1;
-  // eslint-disable-next-line no-undef
-  var isOpera = (!!window.opr && !!opr.addons) || !!window.opera || navigator.userAgent.indexOf(' OPR/') >= 0;
+function t_animateFix__cashElsInfo(fixedEls) {
+	var winHeight = window.innerHeight;
+	fixedEls.forEach(function (fixedEl) {
+		var zoomValue = t_animationExt__getZoom(fixedEl);
+		var elTopPos = parseInt(fixedEl.style.top, 10);
+		if (!window.t_animationExt__isOnlyScalable) elTopPos *= zoomValue;
 
-  return isFirefox || isOpera;
+		// append parents padding top to absolute top position to create trigger point
+		var elParent = fixedEl.closest('.r');
+		var recTopOffset = elParent ? elParent.getBoundingClientRect().top + window.pageYOffset : 0;
+		var elParentPaddingTop = elParent ? parseInt(elParent.style.paddingTop, 10) || 0 : 0;
+		recTopOffset += elParentPaddingTop ? elParentPaddingTop : 0;
+
+		fixedEl.topOffset = recTopOffset + elTopPos;
+		fixedEl.trigger = parseFloat(t_animationExt__getAttrByRes(fixedEl, 'fix', 0)) || 0;
+		fixedEl.distance = parseInt(t_animationExt__getAttrByRes(fixedEl, 'fix-dist', 0), 10) || 0;
+		fixedEl.distance *= zoomValue;
+		fixedEl.end = fixedEl.topOffset + fixedEl.distance;
+		fixedEl.fixedWrapperEl = fixedEl.querySelector('.tn-atom__sticky-wrapper');
+		t_animateFix__getElTrigger(fixedEl, winHeight);
+	});
+}
+
+/**
+ * get element trigger
+ *
+ * @param {(HTMLElement &
+ * {
+ * topOffset:number,
+ * triggerOffset:number,
+ * trigger: number,
+ * distance:number,
+ * end:number,
+ * fixedWrapperEl:HTMLElement
+ * }
+ * )} fixedEl - fixed element
+ * @param {number} winHeight - window height
+ */
+function t_animateFix__getElTrigger(fixedEl, winHeight) {
+	var zoomValue = t_animationExt__getZoom(fixedEl);
+	fixedEl.triggerOffset = parseInt(t_animationExt__getAttrByRes(fixedEl, 'fix-trgofst', 0), 10) || 0;
+	fixedEl.triggerOffset *= zoomValue;
+	if (fixedEl.trigger === 0.5 || fixedEl.trigger === 1) {
+		var isHalfTrigger = fixedEl.trigger === 0.5;
+		var appendedHeight = isHalfTrigger ? winHeight / 2 : winHeight;
+		var removedHeight = isHalfTrigger ? t_animationExt__getPureHeight(fixedEl) / 2 : t_animationExt__getPureHeight(fixedEl);
+		removedHeight *= zoomValue;
+		fixedEl.triggerOffset += appendedHeight;
+		fixedEl.triggerOffset -= removedHeight;
+		if (fixedEl.triggerOffset > fixedEl.topOffset && fixedEl.triggerOffset <= appendedHeight) {
+			fixedEl.triggerOffset = fixedEl.topOffset;
+		}
+		if (!window.t_animationExt__isOnlyScalable) fixedEl.triggerOffset /= zoomValue;
+	}
+}
+
+
+/*============= MOUSEMOVE PARALLAX ==============*/
+
+/**
+ * init mouse parallax animation
+ *
+ * @returns {void}
+ */
+function t_animateParallax__initMouse() {
+	var parallaxMouseElements = t_animationExt__getElsByBreakpoints('prx', ['mouse']);
+	if (!parallaxMouseElements.length) return;
+
+	parallaxMouseElements.forEach(function (parallaxMouseEl) {
+		parallaxMouseEl.pathX = parseInt(t_animationExt__getAttrByRes(parallaxMouseEl, 'prx-dx', 0), 10) || 0;
+		parallaxMouseEl.pathY = parseInt(t_animationExt__getAttrByRes(parallaxMouseEl, 'prx-dy', 0), 10) || 0;
+		parallaxMouseEl.animEl = parallaxMouseEl.querySelectorAll('.tn-atom__prx-wrapper');
+		t_animateParallax__cashOffsets(parallaxMouseEl);
+
+		// cash offsets for images with lazyload, which are loaded later
+		var isImageType = parallaxMouseEl.getAttribute('data-elem-type') === 'image';
+		if (isImageType) t_animateParallax__cashOffsets__OnImgLoad(parallaxMouseEl);
+		t_animateParallax__moveEl(parallaxMouseEl);
+	});
+
+	window.addEventListener('resize', t_throttle(function () {
+		parallaxMouseElements.forEach(function (parallaxMouseEl) {
+			t_animateParallax__cashOffsets(parallaxMouseEl);
+		});
+	}, 50));
+}
+
+/**
+ * save offset of parallax mouse element
+ *
+ * @param {HTMLElement &
+ * {
+ * topOffset: number,
+ * bottomOffset:number,
+ * pathX: number,
+ * pathY:number,
+ * animEl:NodeList,
+ * parentTopOffset: number,
+ * parentBottomOffset:number
+ * }
+ * } parallaxMouseEl - current element
+ */
+function t_animateParallax__cashOffsets(parallaxMouseEl) {
+	parallaxMouseEl.topOffset = parallaxMouseEl.getBoundingClientRect().top + window.pageYOffset;
+	var elHeight = t_animationExt__getPureHeight(parallaxMouseEl);
+	parallaxMouseEl.bottomOffset = parallaxMouseEl.topOffset + elHeight;
+	// cash parent offset, if element is larger
+	var parent = parallaxMouseEl.closest('.r');
+	var parentOffsetTop = parent ? parent.getBoundingClientRect().top + window.pageYOffset : 0;
+	var parentHeight = parent ? t_animationExt__getPureHeight(parent) : 0;
+	var parentOffsetBottom = parentOffsetTop + parentHeight;
+	if (parentOffsetTop > parallaxMouseEl.topOffset) {
+		parallaxMouseEl.parentTopOffset = parentOffsetTop;
+	}
+	if (parentOffsetBottom < parallaxMouseEl.bottomOffset) {
+		parallaxMouseEl.parentBottomOffset = parentOffsetBottom;
+	}
+}
+
+/**
+ * save offset of img inside parallax mouse element.
+ * we need to catch load event for images, if lazyload is active
+ *
+ * @param {HTMLElement} el - current element
+ */
+function t_animateParallax__cashOffsets__OnImgLoad(el) {
+	if (!window.lazy) return;
+	var image = el.querySelector('img');
+	if (image) image.addEventListener('load', function () {
+		t_animateParallax__cashOffsets(el);
+	});
+}
+
+/**
+ * move element by mousemoving for parallax mouse elements
+ *
+ * @param {HTMLElement &
+ * {
+ * topOffset: number,
+ * bottomOffset:number,
+ * pathX: number,
+ * pathY:number,
+ * animEl:NodeList,
+ * parentTopOffset: number,
+ * parentBottomOffset:number
+ * }
+ * } parallaxMouseEl - current element
+ */
+function t_animateParallax__moveEl(parallaxMouseEl) {
+	var winHeight = window.innerHeight;
+	var winWidth = window.innerWidth;
+	var pathX = parallaxMouseEl.pathX;
+	var pathY = parallaxMouseEl.pathY;
+	var moveX = 0;
+	var moveY = 0;
+	var frameMoveX = 0;
+	var frameMoveY = 0;
+	var stop = false;
+
+	document.body.addEventListener('mousemove', t_throttle(function (e) {
+		var padding = pathX || 0;
+		var viewportTopPos = window.pageYOffset;
+		var viewportBottomPos = window.pageYOffset + window.innerHeight;
+		var isElOutsideViewport = viewportBottomPos <= parallaxMouseEl.topOffset - padding
+			|| parallaxMouseEl.bottomOffset + padding <= viewportTopPos;
+		if (isElOutsideViewport) return;
+		if (typeof e == 'undefined' || window.innerWidth < 1200) return;
+		var topActiveArea = e.pageY - e.clientY - 100;
+		var bottomActiveArea = e.pageY + winHeight + 100;
+
+		if (window.innerWidth < 1400 &&
+			(parallaxMouseEl.bottomOffset < topActiveArea || parallaxMouseEl.topOffset > bottomActiveArea)) return;
+		if (parallaxMouseEl.parentTopOffset > e.pageY || parallaxMouseEl.parentBottomOffset < e.pageY) return;
+
+		// for large background image, which is larger than record (".r") height
+		if (typeof pathX === 'number') {
+			var winHalfX = winWidth / 2;
+			var mouseCenterOffsetX = winHalfX - e.clientX;
+			var moveIntensityX = mouseCenterOffsetX / winHalfX;
+			moveX = Math.round(pathX * moveIntensityX);
+		}
+		if (typeof pathY === 'number') {
+			var winHalfY = winHeight / 2;
+			var mouseCenterOffsetY = winHalfY - e.clientY;
+			var moveIntensityY = mouseCenterOffsetY / winHalfY;
+			moveY = Math.round(pathY * moveIntensityY);
+		}
+
+		stop = false;
+		t_animateParallax__moveEl__drawFrame();
+	}, 50));
+
+	function t_animateParallax__moveEl__drawFrame() {
+		if (stop) return;
+		requestAnimationFrame(t_animateParallax__moveEl__drawFrame);
+
+		if (moveX) frameMoveX += (moveX - frameMoveX) * 0.02;
+		if (moveY) frameMoveY += (moveY - frameMoveY) * 0.02;
+
+		if (Math.abs(frameMoveX - moveX) < 1 && Math.abs(frameMoveY - moveY) < 1) {
+			stop = true;
+			return;
+		}
+
+		if (parallaxMouseEl && parallaxMouseEl.animEl.length) {
+			Array.prototype.forEach.call(parallaxMouseEl.animEl, function (animatedEl) {
+				animatedEl.style.transform = 'translate3d(' + frameMoveX + 'px, ' + frameMoveY + 'px, 0px)';
+			});
+		}
+	}
+}
+
+
+/*============= SCROLL PARALLAX ==============*/
+/**
+ * init scroll for parallax animated elements
+ *
+ * @returns {void}
+ */
+function t_animateParallax__initScroll() {
+	var parallaxScrollElements = t_animationExt__getElsByBreakpoints('prx', ['scroll']);
+	if (!parallaxScrollElements.length) return;
+
+	var hiddenEls = parallaxScrollElements.filter(function (el) {
+		return t_animationExt__isElementHidden(el);
+	});
+
+	parallaxScrollElements.forEach(function (parallaxScrollEl) {
+		if (!t_animationExt__isElementHidden(parallaxScrollEl)) {
+			var elSpeed = t_animationExt__getAttrByRes(parallaxScrollEl, 'prx-s', 0);
+			var rellaxSpeed = Math.round((parseInt(elSpeed) - 100) / 10);
+			var parallaxWrapper = parallaxScrollEl.querySelector('.tn-atom__prx-wrapper');
+			if (parallaxWrapper && rellaxSpeed) parallaxWrapper.setAttribute('data-rellax-speed', rellaxSpeed.toString());
+		}
+	});
+
+	if (parallaxScrollElements.length) {
+		t_animationExt__createScrollParallax('[data-rellax-speed]');
+	}
+
+	if (!hiddenEls.length) return;
+
+	window.addEventListener('scroll', t_throttle(function () {
+		var visibleElements = hiddenEls.filter(function (el, i) {
+			if (!t_animationExt__isElementHidden(el)) {
+				// remove from hidden elements visible child
+				hiddenEls.splice(i, 1);
+				// and append this child to visible elements array
+				return true;
+			}
+			return false;
+		});
+		if (!visibleElements.length) return;
+		var lastVisibleEl = visibleElements[visibleElements.length - 1];
+		var elSpeed = t_animationExt__getAttrByRes(lastVisibleEl, 'prx-s', 0);
+		var curSelector = 'rellax' + Date.now();
+		visibleElements.forEach(function (visibleEl) {
+			var atomWrapper = visibleEl.querySelector('.tn-atom__prx-wrapper');
+			var rellaxSpeed = Math.round((parseInt(elSpeed) - 100) / 10);
+			if (atomWrapper) atomWrapper.setAttribute('data-rellax-speed', rellaxSpeed.toString());
+			visibleEl.classList.add(curSelector);
+		});
+		t_animationExt__createScrollParallax('.' + curSelector);
+	}, 50));
+}
+
+/**
+ * find element by selector, get it offsets and create parallax. Update values by resize/orientation change
+ *
+ * @param {string} selector
+ */
+function t_animationExt__createScrollParallax(selector) {
+	var elements = Array.prototype.slice.call(document.querySelectorAll(selector));
+	var scrollParallaxOptions = t_animationExt__getParallaxOffests(elements);
+
+	// update offsets in resize
+	if (window.t_animationExt__isMobile) {
+		window.addEventListener('orientationchange', function () {
+			// wait to get correct viewport height
+			setTimeout(function () {
+				scrollParallaxOptions = t_animationExt__getParallaxOffests(elements);
+				t_animationExt__animateParallaxOnScroll(scrollParallaxOptions);
+			}, 300);
+		});
+	} else {
+		window.addEventListener('resize', t_throttle(function () {
+			scrollParallaxOptions = t_animationExt__getParallaxOffests(elements);
+			t_animationExt__animateParallaxOnScroll(scrollParallaxOptions);
+		}, 50));
+	}
+
+	window.addEventListener('scroll', function () {
+		t_animationExt__animateParallaxOnScroll(scrollParallaxOptions);
+	});
+}
+
+/**
+ * create object with necessary params to create and animate parallax
+ *
+ * @param {HTMLElement[]} elements
+ * @returns {{
+ * el: HTMLElement,
+ * elHeight: number,
+ * elTopPos: number,
+ * elBottomPos: number,
+ * posY: number,
+ * speed: number,
+ * isAboveParallax: Boolean
+ * }[]}
+ */
+function t_animationExt__getParallaxOffests(elements) {
+	return elements.map(function (scrollParallaxEl) {
+		var speedFactor = scrollParallaxEl.getAttribute('data-rellax-speed');
+		var posY = window.pageYOffset;
+		var scaledDifference = t_animationExt__calcScaledDiff(scrollParallaxEl);
+		var blockTopPos = scrollParallaxEl.getBoundingClientRect().top + posY + scaledDifference;
+		var blockHeight = scrollParallaxEl.clientHeight;
+		var isAboveParallax = posY > blockTopPos;
+
+		// update element top position inside zero-block, that use autoscale
+		var zoomValue = t_animationExt__getZoom(scrollParallaxEl);
+		if (!window.t_animationExt__isOnlyScalable) blockTopPos *= zoomValue;
+
+		// apparently parallax equation everyone uses
+		var percentageY = 0.5;
+
+		var speedPoint = 5;
+		var speed = speedFactor ? t_animationExt__getParallaxSpeed(speedFactor, -speedPoint, speedPoint) : 0;
+		var positionY = t_animationExt__getParallaxPosition(speed, percentageY);
+
+		return {
+			el: scrollParallaxEl,
+			elHeight: blockHeight,
+			elTopPos: blockTopPos,
+			elBottomPos: blockHeight + blockTopPos,
+			posY: positionY,
+			speed: speed,
+			isAboveParallax: isAboveParallax
+		};
+	});
+}
+
+/**
+ * create object with necessary params to create and animate parallax
+ *
+ * @param {{
+ * el: HTMLElement,
+ * elHeight: number,
+ * elTopPos: number,
+ * elBottomPos: number,
+ * posY: number,
+ * speed: number,
+ * isAboveParallax: Boolean
+ * }[]} scrollParallaxOptions
+ */
+function t_animationExt__animateParallaxOnScroll(scrollParallaxOptions) {
+	var viewportHeight = document.documentElement.clientHeight;
+	var viewportTopPos = window.pageYOffset;
+	var viewportBottomPos = viewportTopPos + viewportHeight;
+	scrollParallaxOptions.forEach(function (opt) {
+		var isElementOutsideViewport = opt.elTopPos > viewportBottomPos || opt.elBottomPos < viewportTopPos;
+		if (!opt.isAboveParallax && isElementOutsideViewport) return;
+		var percentageY = ((viewportBottomPos - opt.elTopPos) / (opt.elHeight + viewportHeight));
+		var updatePositionY = t_animationExt__getParallaxPosition(opt.speed, percentageY);
+		if (!opt.isAboveParallax) {
+			opt.posY = updatePositionY;
+			opt.isAboveParallax = true;
+		}
+		updatePositionY -= opt.posY;
+		opt.el.style.transform = 'translateY(' + updatePositionY + 'px)';
+	});
+}
+
+/**
+ * get correct trigger offsets in autoscale mode, in case of use Firefox/Opera
+ *
+ * @param {HTMLElement} el
+ * @returns {number} - difference between top position of parent and scaled children
+ */
+function t_animationExt__calcScaledDiff(el) {
+	var scaledWrapper = el.querySelector('.tn-atom__scale-wrapper');
+	if (window.t_animationExt__isOnlyScalable && scaledWrapper && el) {
+		var elTopPos = el.getBoundingClientRect().top;
+		var scaleTopPos = scaledWrapper.getBoundingClientRect().top;
+		var difference = elTopPos - scaleTopPos;
+		el.setAttribute('data-scaled-diff', difference.toString());
+	}
+	var diff = el.getAttribute('data-scaled-diff') || '0';
+	return parseInt(diff, 10);
+}
+
+function t_animationExt__getParallaxSpeed(value, min, max) {
+	return (value <= min) ? min : ((value >= max) ? max : value);
+}
+
+function t_animationExt__getParallaxPosition(speed, percentage) {
+	return Math.round((speed * (100 * (1 - percentage))));
+}
+
+
+/*============= Support functions ==============*/
+
+/**
+ * get height without padding
+ *
+ * @param {HTMLElement} el - current element
+ * @returns {number} - height without padding
+ */
+function t_animationExt__getPureHeight(el) {
+	if (!el) return 0;
+	var elHeight = el.clientHeight || el.offsetHeight || parseInt(window.getComputedStyle(el).height, 10);
+	var elPaddingTop = el.style.paddingTop || 0;
+	var elPaddingBottom = el.style.paddingBottom || 0;
+	return elHeight - (elPaddingTop + elPaddingBottom);
+}
+
+function t_animationExt__isElementHidden(el) {
+	return !el.offsetWidth && !el.offsetHeight && !el.getClientRects().length;
+}
+
+/**
+ * check old IE versions
+ *
+ * @returns {boolean} - is old IE version
+ */
+function t_animateParallax__checkOldIE() {
+	var iEIndex = window.navigator.userAgent.indexOf('MSIE');
+	if (iEIndex === -1) return false;
+	var ieVersion = parseInt(window.navigator.userAgent.substring(iEIndex +
+		5, window.navigator.userAgent.indexOf('.', iEIndex)), 10);
+	return ieVersion === 8 || ieVersion === 9 || ieVersion === 10;
 }
 
 /**
@@ -354,721 +723,120 @@ function t_animationExt__isOnlyScalableElem() {
  * @returns {number} - zoom value
  */
 function t_animationExt__getZoom(el) {
-  var zoomValue = 1;
-  var artboard = el.closest('.t396__artboard');
-
-  if (artboard && artboard.classList.contains('t396__artboard_scale')) {
-    zoomValue = window.tn_scale_factor;
-  }
-
-  return zoomValue;
+	var artboard = el.closest('.t396__artboard');
+	if (artboard && artboard.classList.contains('t396__artboard_scale')) {
+		return window.tn_scale_factor;
+	}
+	return 1;
 }
 
 /**
- * cash element information
- * 
- * @param {NodeList} fixedEls - fixed elements
- */
-function t_animateFix__cashElsInfo(fixedEls) {
-  var winHeight = window.innerHeight;
-  Array.prototype.forEach.call(fixedEls, function (fixedEl) {
-    var zoomValue = t_animationExt__getZoom(fixedEl);
-    var elTopPos = parseInt(fixedEl.style.top);
-    if (!t_animationExt__isOnlyScalableElem()) {
-      elTopPos = parseInt(fixedEl.style.top) * zoomValue;
-    }
-    var elParent = fixedEl.closest('.r');
-    //TODO раньше было так: recTopOffset = elRecParent.offset().top + elRecParent.css("padding-top").replace("px", "") * 1; 
-    // доп. учет padding'a тут лишний, offset() учитывает внутренние отступы
-    var recTopOffset = elParent ? elParent.getBoundingClientRect().top + window.pageYOffset : 0;
-    fixedEl.topOffset = recTopOffset + elTopPos;
-    fixedEl.trigger = t_animationExt__getAttrByRes(fixedEl, 'fix');
-    fixedEl.distance = t_animationExt__getAttrByRes(fixedEl, 'fix-dist') * 1 || 0;
-    fixedEl.distance *= zoomValue;
-    fixedEl.end = fixedEl.topOffset + fixedEl.distance;
-    fixedEl.fixedWrapperEl = fixedEl.querySelector('.tn-atom__sticky-wrapper');
-    t_animateFix__getElTrigger(fixedEl, winHeight);
-  });
-}
-
-/**
- * get element trigger
- * 
+ * get value from attribute, it depends on resolution parameter, element contains mobile animation, or not
+ *
  * @param {HTMLElement} el - current element
- * @param {number} winHeight - window height
+ * @param {string} attr - animation attribute
+ * @param {number} resolution - resolution, in many times use window.innerWidth
+ * @returns {string} - attribute value (empty string - if attribute is not defined, or el is not defined
  */
-function t_animateFix__getElTrigger(el, winHeight) {
-  var zoomValue = t_animationExt__getZoom(el);
-  el.triggerOffset = t_animationExt__getAttrByRes(el, 'fix-trgofst');
-  el.triggerOffset = !el.triggerOffset || el.triggerOffset === '0' ? 0 : el.triggerOffset * 1;
-  if (t_animationExt__isOnlyScalableElem()) el.triggerOffset *= zoomValue;
+function t_animationExt__getAttrByRes(el, attr, resolution) {
+	if (!el) return '';
+	if (!resolution) resolution = window.innerWidth;
+	var isElHasMobileAnimation = el.getAttribute('data-animate-mobile') === 'y';
+	var breakpoints = [1200, 960, 640, 480, 320];
+	var foundValue;
 
-  if (+(el.trigger) === 0.5) {
-    el.triggerOffset += winHeight / 2;
-    if (el.triggerOffset > el.topOffset && el.triggerOffset <= winHeight / 2) {
-      el.triggerOffset = el.topOffset;
-    }
-    if (!t_animationExt__isOnlyScalableElem()) el.triggerOffset /= zoomValue;
-  }
-
-  if (+(el.trigger) === 1) {
-    el.triggerOffset += winHeight;
-    if (el.triggerOffset > el.topOffset && el.triggerOffset <= winHeight) {
-      el.triggerOffset = el.topOffset;
-    }
-    if (!t_animationExt__isOnlyScalableElem()) el.triggerOffset /= zoomValue;
-  }
-}
-
-//TODO not used function
-
-// function t_animateFix__reset(fixedEls) {
-//   for (var i = 0; i < fixedEls.length; i++) {
-//     var el = fixedEls[i];
-//     $(el).css("transform", "");
-//     el.fixedWrapperEl.css("position", "");
-//     // if (isSafari) {
-//     //   $(el).css({"position":""});
-//     // }
-//     el.fixedWrapperEl.removeClass("t-sticky_ended t-sticky_going");
-//   }
-// }
-
-/**
- * wrap element
- */
-function t_animateParallax__wrapEls() {
-  var wrappingElements = document.querySelectorAll("[data-animate-prx='scroll'] .tn-atom, [data-animate-prx='mouse'] .tn-atom,[data-animate-prx-res-960='scroll'] .tn-atom, [data-animate-prx-res-960='mouse'] .tn-atom,[data-animate-prx-res-640='scroll'] .tn-atom, [data-animate-prx-res-640='mouse'] .tn-atom,[data-animate-prx-res-480='scroll'] .tn-atom, [data-animate-prx-res-480='mouse'] .tn-atom,[data-animate-prx-res-320='scroll'] .tn-atom, [data-animate-prx-res-320='mouse'] .tn-atom");
-  Array.prototype.forEach.call(wrappingElements, function (wrappingElement) {
-    var parent = wrappingElement.parentNode;
-    var div = document.createElement('div');
-    div.classList.add('tn-atom__prx-wrapper');
-    div.style.display = 'table';
-    div.style.width = 'inherit';
-    div.style.height = 'inherit';
-    var clonedEl = wrappingElement.cloneNode(true);
-    div.appendChild(clonedEl);
-    parent.appendChild(div);
-    if (parent) {
-      parent.removeChild(wrappingElement);
-    }
-  });
+	for (var i = 0; i < breakpoints.length; i++) {
+		if (i === 0 && resolution >= breakpoints[i]) {
+			foundValue = el.getAttribute('data-animate-' + attr);
+			break;
+		}
+		if (!isElHasMobileAnimation) {
+			el.style.transition = 'none';
+			break;
+		}
+		if (i > 0 && resolution >= breakpoints[i]) {
+			foundValue = el.getAttribute('data-animate-' + attr + '-res-' + breakpoints[i]);
+			if (i > 1 && !foundValue) {
+				var slicedBreakpoints = breakpoints.slice(1, i);
+				for (var n = slicedBreakpoints.length - 1; n >= 0; n--) {
+					foundValue = el.getAttribute('data-animate-' + attr + '-res-' + slicedBreakpoints[n]);
+					if (foundValue) break;
+				}
+				if (!foundValue) foundValue = el.getAttribute('data-animate-' + attr);
+				break;
+			}
+		}
+	}
+	return foundValue ? foundValue : '';
 }
 
 /**
- * init scroll
- * 
- * @returns {void}
+ * get elements by data-atributes
+ *
+ * @param {string} attribute
+ * @param {Array} triggers - may be ['scroll', 'mouse']
+ * @return {HTMLElement[]} - html element array
  */
-function t_animateParallax__initScroll() {
-  var scrollElements = document.querySelectorAll("[data-animate-prx='scroll'],[data-animate-prx-res-960='scroll'],[data-animate-prx-res-640='scroll'],[data-animate-prx-res-480='scroll'],[data-animate-prx-res-320='scroll']");
-  var scrollTop = window.pageYOffset;
-
-  if (!scrollElements.length) return;
-
-  var hiddenEls = [];
-
-  Array.prototype.filter.call(scrollElements, function (scrollEl) {
-    scrollEl.topOffset = scrollEl.getBoundingClientRect().top + window.pageYOffset;
-    var scrollElHeight = t_animateExt__getPureHeight(scrollEl);
-    scrollEl.bottomOffset = scrollEl.topOffset + scrollElHeight;
-
-    // mark the ones, which are under viewport
-    var atomWrapper = scrollEl.querySelector('.tn-atom__prx-wrapper');
-    if (atomWrapper) {
-      if (scrollEl.bottomOffset < scrollTop) {
-        atomWrapper.setAttribute('data-above-parallax', 'true');
-      } else {
-        atomWrapper.setAttribute('data-above-parallax', 'false');
-      }
-    }
-    // if elements are hidden, we add parallax, when they become visible why? because hidden elements return incorrect offset().top (always 0) and Rellax starts to add transform too early
-    if (!scrollEl.offsetWidth
-      && !scrollEl.offsetHeight
-      && !scrollEl.getClientRects().length) {
-      hiddenEls.push(scrollEl);
-      return false;
-    }
-
-    if (atomWrapper) {
-      // add speed
-      var elSpeed = t_animationExt__getAttrByRes(scrollEl, 'prx-s');
-      atomWrapper.setAttribute('data-rellax-speed', Math.round((parseInt(elSpeed) - 100) / 10));
-    }
-    return true;
-  });
-
-  // TODO: update onscroll param for elements above viewport, at the moment 01.11.2021 it works only for element under viewport
-  if (scrollElements.length) {
-    if (document.querySelectorAll('[data-above-parallax="true"]').length) {
-      // eslint-disable-next-line no-undef
-      Rellax('[data-above-parallax="true"]', {
-        round: true,
-        center: true
-      });
-    }
-
-    if (document.querySelectorAll('[data-above-parallax="false"]').length) {
-      // eslint-disable-next-line no-undef
-      Rellax('[data-above-parallax="false"]', {
-        round: true,
-        onscroll: true
-      });
-    }
-  }
-
-  // onscroll - custom parameter, just for Tilda animation, not from original library
-
-  // at the moment 27.12.2017 Rellax have two modes:
-  // 1. it centeres elements when you scroll to them (and adds transform onready, before any scroll start, so elements jump and are not at their original positions);
-  // 2. without centering it moves elements for too long distance;
-
-  window.addEventListener('scroll', t_throttle(function () {
-    var visibleEls = [];
-    Array.prototype.filter.call(hiddenEls, function (hiddenElement) {
-      if (hiddenElement.offsetWidth || hiddenElement.offsetHeight || hiddenElement.getClientRects().length) {
-        visibleEls.push(hiddenElement);
-        return false;
-      }
-      return true;
-    });
-    if (!visibleEls.length) return;
-    var lastVisibleEl = visibleEls[visibleEls.length - 1];
-    var elSpeed = t_animationExt__getAttrByRes(lastVisibleEl, 'prx-s');
-    var curSelector = 'rellax' + Date.now();
-    Array.prototype.forEach.call(visibleEls, function (visibleEl) {
-      var atomWrapper = visibleEl.querySelector('.tn-atom__prx-wrapper');
-      if (atomWrapper) {
-        atomWrapper.setAttribute('data-rellax-speed', Math.round((parseInt(elSpeed) - 100) / 10));
-      }
-      visibleEl.classList.add(curSelector);
-    });
-    // eslint-disable-next-line no-undef
-    Rellax('.' + curSelector, {
-      round: true,
-      onscroll: true
-    });
-  }, 50));
+function t_animationExt__getElsByBreakpoints(attribute, triggers) {
+	var breakpoints = [1200, 960, 640, 480, 320];
+	var animatedElements = [];
+	breakpoints.forEach(function (breakpoint, i) {
+		if (triggers && triggers.length) {
+			triggers.forEach(function (trigger) {
+				var selector = '[data-animate-' + attribute + '="' + trigger + '"]';
+				if (i !== 0) selector = '[data-animate-' + attribute + '-res' + breakpoint + '="' + trigger + '"]';
+				var animtedEls = Array.prototype.slice.call(document.querySelectorAll(selector));
+				if (animtedEls.length) animatedElements = animatedElements.concat(animtedEls);
+			});
+		} else {
+			var selector = i === 0 ? '[data-animate-' + attribute + ']' : '[data-animate-' + attribute + '-res-' + breakpoint + ']';
+			var animtedEls = Array.prototype.slice.call(document.querySelectorAll(selector));
+			if (animtedEls.length) animatedElements = animatedElements.concat(animtedEls);
+		}
+	});
+	return animatedElements;
 }
 
 /**
- * init mouse animation
- * 
- * @returns {void}
+ * wrappint atom element to current classname div
+ *
+ * @param {HTMLElement} el - atom
+ * @param {string} className
+ * @param {HTMLElement | null} scaleWrapper - for Opera/Firefox, in case of use autoscale
  */
-function t_animateParallax__initMouse() {
-  var mouseElements = document.querySelectorAll("[data-animate-prx='mouse'],[data-animate-prx-res-960='mouse'],[data-animate-prx-res-640='mouse'],[data-animate-prx-res-480='mouse'],[data-animate-prx-res-320='mouse']");
-
-  if (!mouseElements.length) return;
-
-  // cash some information
-  var winHeight = window.innerHeight;
-  var winWidth = window.innerWidth;
-
-  Array.prototype.forEach.call(mouseElements, function (mouseElement) {
-    mouseElement.pathX = t_animationExt__getAttrByRes(mouseElement, 'prx-dx');
-    mouseElement.pathY = t_animationExt__getAttrByRes(mouseElement, 'prx-dy');
-    mouseElement.animEl = mouseElement.querySelectorAll('.tn-atom__prx-wrapper');
-    t_animateParallax__cashOffsets(mouseElement);
-
-    // cash offsets for images with lazyload, which are loaded later
-    var elType = mouseElement.getAttribute('data-elem-type');
-    if (elType === 'image') {
-      t_animateParallax__cashOffsets__OnImgLoad(mouseElement);
-    }
-    t_animateParallax__moveEl(mouseElement, winHeight, winWidth);
-  });
-
-  window.addEventListener('resize', t_throttle(function() {
-    winHeight = window.innerHeight;
-    winWidth = window.innerWidth;
-    Array.prototype.forEach.call(mouseElements, function (mouseElement) {
-      t_animateParallax__cashOffsets(mouseElement);
-    });
-  }, 50));
+function t_animationExt__wrapEl(el, className, scaleWrapper) {
+	var parentElement = el.closest('.tn-elem');
+	var div = document.createElement('div');
+	div.classList.add(className);
+	div.style.display = 'table';
+	div.style.width = 'inherit';
+	div.style.height = 'inherit';
+	scaleWrapper ? div.appendChild(scaleWrapper) : div.appendChild(el);
+	parentElement.appendChild(div);
 }
 
-/**
- * get height without padding
- * 
- * @param {HTMLElement} el - current element
- * @returns {number} - height without padding
- */
-function t_animateExt__getPureHeight(el) {
-  var elHeight = el.clientHeight || el.offsetHeight;
-  var elPaddingTop = el.style.paddingTop || 0;
-  var elPaddingBottom = el.style.paddingBottom || 0;
-  return elHeight - (elPaddingTop + elPaddingBottom);
-}
-
-/**
- * save offset of element
- * 
- * @param {HTMLElement} el - current element
- */
-function t_animateParallax__cashOffsets(el) {
-  el.topOffset = el.getBoundingClientRect().top + window.pageYOffset;
-  var elHeight = t_animateExt__getPureHeight(el);
-  el.bottomOffset = el.topOffset + elHeight;
-  // cash parent offset, if element is larger
-  var parent = el.closest('.r');
-  //JQUERY
-  var parentOffsetTop = parent ? parent.getBoundingClientRect().top + window.pageYOffset : 0;
-  var parentHeight = parent ? t_animateExt__getPureHeight(parent) : 0;
-  var parentOffsetBottom = parentOffsetTop + parentHeight;
-  if (parentOffsetTop > el.topOffset) {
-    el.parentTopOffset = parentOffsetTop;
-  }
-  if (parentOffsetBottom < el.bottomOffset) {
-    el.parentBottomOffset = parentOffsetBottom;
-  }
-}
-
-/**
- * save offset of img
- * 
- * @param {HTMLElement} el - current element
- */
-function t_animateParallax__cashOffsets__OnImgLoad(el) {
-  // we need to catch load event for images, if lazyload is active
-  if (window.lazy) {
-    var currentImages = el.querySelectorAll('img');
-    Array.prototype.forEach.call(currentImages, function (currentImage) {
-      currentImage.addEventListener('load', t_animateParallax__cashOffsets(el));
-    });
-  }
-}
-
-/**
- * @param {HTMLElement} el - current element
- * @param {number} winHeight - window height
- * @param {number} winWidth - window width
- */
-function t_animateParallax__moveEl(el, winHeight, winWidth) {
-  var pathX = el.pathX;
-  var pathY = el.pathY;
-  var moveX = 0;
-  var moveY = 0;
-  var frameMoveX = 0;
-  var frameMoveY = 0;
-  var stop = false;
-
-  document.body.addEventListener('mousemove', t_throttle(function (e) {
-    if (typeof e == 'undefined' || window.innerWidth < 1200) return;
-    var topActiveArea = e.pageY - e.clientY - 100;
-    var bottomActiveArea = e.pageY + winHeight + 100;
-    if (el.bottomOffset < topActiveArea || el.topOffset > bottomActiveArea) {
-      return;
-    }
-    if (el.parentTopOffset > e.pageY || el.parentBottomOffset < e.pageY) {
-      return;
-    }
-
-    // for large background image, which is larger than record (".r") height
-    if (typeof pathX !== 'undefined') {
-      var winHalfX = winWidth / 2;
-      var mouseCenterOffsetX = winHalfX - e.clientX;
-      var moveIntensityX = mouseCenterOffsetX / winHalfX;
-      moveX = Math.round(pathX * moveIntensityX);
-    }
-    if (typeof pathY !== 'undefined') {
-      var winHalfY = winHeight / 2;
-      var mouseCenterOffsetY = winHalfY - e.clientY;
-      var moveIntensityY = mouseCenterOffsetY / winHalfY;
-      moveY = Math.round(pathY * moveIntensityY);
-    }
-
-    stop = false;
-    t_animateParallax__moveEl__drawFrame();
-  }, 50));
-
-  /**
-   * @returns {void}
-   */
-  function t_animateParallax__moveEl__drawFrame() {
-    if (stop) { return; }
-
-    requestAnimationFrame(t_animateParallax__moveEl__drawFrame);
-  
-    if (moveX != 0) {
-      frameMoveX += (moveX - frameMoveX)*0.02;
-    }
-    if (moveY != 0) {
-      frameMoveY += (moveY - frameMoveY)*0.02;
-    }
-    if (Math.abs(frameMoveX - moveX) < 1 && Math.abs(frameMoveY - moveY) < 1) {
-      stop = true;
-      return;
-    }
-    if (el && el.animEl.length) {
-      Array.prototype.forEach.call(el.animEl, function (animatedEl) {
-        animatedEl.style.transform = 'translate3d(' + frameMoveX + 'px, ' + frameMoveY + 'px, 0px)';
-      });
-    }
-  }
-}
-
-/**
- * check old version of IE
- * 
- * @returns {boolean} - is old IE version
- */
-function t_animateParallax__checkOldIE() {
-  var sAgent = window.navigator.userAgent,
-    Idx = sAgent.indexOf('MSIE'),
-    ieVersion = '',
-    oldIE = false;
-  if (Idx > 0) {
-    ieVersion = parseInt(sAgent.substring(Idx + 5, sAgent.indexOf('.', Idx)));
-    if (ieVersion == 8 || ieVersion == 9 || ieVersion == 10) {
-      oldIE = true;
-    }
-  }
-  return oldIE;
-}
-
-
-
-
-// ------------------------------------------
-// Rellax.js - v1.0.0
-// Buttery smooth parallax library
-// Copyright (c) 2016 Moe Amaya (@moeamaya)
-// MIT license
-//
-// Thanks to Paraxify.js and Jaime Cabllero
-// for parallax concepts
-// ------------------------------------------
-
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    // AMD. Register as an anonymous module.
-    define([], factory);
-  } else if (typeof module === 'object' && module.exports) {
-    // Node. Does not work with strict CommonJS, but
-    // only CommonJS-like environments that support module.exports,
-    // like Node.
-    module.exports = factory();
-  } else {
-    // Browser globals (root is window)
-    root.Rellax = factory();
-  }
-}(this, function () {
-  var Rellax = function (el, options) {
-    'use strict';
-
-    var self = Object.create(Rellax.prototype);
-
-    var posY = 0; // set it to -1 so the animate function gets called at least once
-    var screenY = 0;
-    var posX = 0;
-    var screenX = 0;
-    var blocks = [];
-    var pause = false;
-
-    // check what requestAnimationFrame to use, and if
-    // it's not supported, use the onscroll event
-    var loop = window.requestAnimationFrame ||
-      window.webkitRequestAnimationFrame ||
-      window.mozRequestAnimationFrame ||
-      window.msRequestAnimationFrame ||
-      window.oRequestAnimationFrame ||
-      function (callback) { setTimeout(callback, 1000 / 60); };
-
-    // check which transform property to use
-    var transformProp = window.transformProp || (function () {
-      var testEl = document.createElement('div');
-      if (testEl.style.transform === null) {
-        var vendors = ['Webkit', 'Moz', 'ms'];
-        for (var vendor in vendors) {
-          if (testEl.style[vendors[vendor] + 'Transform'] !== undefined) {
-            return vendors[vendor] + 'Transform';
-          }
-        }
-      }
-      return 'transform';
-    })();
-
-    // limit the given number in the range [min, max]
-    var clamp = function (num, min, max) {
-      return (num <= min) ? min : ((num >= max) ? max : num);
-    };
-
-    // Default Settings
-    self.options = {
-      speed: -2,
-      center: false,
-      round: true,
-      vertical: true,
-      horizontal: false,
-      callback: function () { },
-    };
-
-    // User defined options (might have more in the future)
-    if (options) {
-      Object.keys(options).forEach(function (key) {
-        self.options[key] = options[key];
-      });
-    }
-
-    // If some clown tries to crank speed, limit them to +-10
-    self.options.speed = clamp(self.options.speed, -10, 10);
-
-    // By default, rellax class
-    if (!el) {
-      el = '.rellax';
-    }
-
-    // check if el is a className or a node
-    var elements = typeof el === 'string' ? document.querySelectorAll(el) : [el];
-
-    // Now query selector
-    if (elements.length > 0) {
-      self.elems = elements;
-    }
-
-    // The elements don't exist
-    else {
-      throw new Error("The elements you're trying to select don't exist.");
-    }
-
-
-    // Let's kick this script off
-    // Build array for cached element values
-    // Bind scroll and resize to animate method
-    var init = function () {
-      screenY = window.innerHeight;
-      screenX = window.innerWidth;
-      setPosition();
-
-      // Get and cache initial position of all elements
-      for (var i = 0; i < self.elems.length; i++) {
-        var block = createBlock(self.elems[i]);
-        // Tilda custom parameter to fix too long moving distance
-        if (self.options.onscroll) {
-          block.inViewport = false;
-        }
-        blocks.push(block);
-      }
-
-      window.addEventListener('resize', function () {
-        animate();
-      });
-
-      // Start the loop
-      update();
-
-      // The loop does nothing if the scrollPosition did not change
-      // so call animate to make sure every element has their transforms
-      animate();
-    };
-
-
-    // We want to cache the parallax blocks'
-    // values: base, top, height, speed
-    // el: is dom object, return: el cache values
-    var createBlock = function (el) {
-      var dataPercentage = el.getAttribute('data-rellax-percentage');
-      var dataSpeed = el.getAttribute('data-rellax-speed');
-      var dataZindex = el.getAttribute('data-rellax-zindex') || 0;
-
-      // initializing at scrollY = 0 (top of browser), scrollX = 0 (left of browser)
-      // ensures elements are positioned based on HTML layout.
-      //
-      // If the element has the percentage attribute, the posY and posX needs to be
-      // the current scroll position's value, so that the elements are still positioned based on HTML layout
-      var posY = self.options.vertical ? (dataPercentage || self.options.center ? (window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop) : 0) : 0;
-      var posX = self.options.horizontal ? (dataPercentage || self.options.center ? (window.pageXOffset || document.documentElement.scrollLeft || document.body.scrollLeft) : 0) : 0;
-
-      // Tilda custom parameter
-      if (self.options.onscroll) {
-        posY = window.pageYOffset;
-      }
-
-      var blockTop = posY + el.getBoundingClientRect().top;
-      var zoomValue = t_animationExt__getZoom(el);
-      // for zoomed blocks
-      blockTop *= zoomValue;
-      var blockHeight = el.clientHeight || el.offsetHeight || el.scrollHeight;
-
-      var blockLeft = posX + el.getBoundingClientRect().left;
-      var blockWidth = el.clientWidth || el.offsetWidth || el.scrollWidth;
-
-      // apparently parallax equation everyone uses
-      var percentageY = dataPercentage ? dataPercentage : (posY - blockTop + screenY) / (blockHeight + screenY);
-      var percentageX = dataPercentage ? dataPercentage : (posX - blockLeft + screenX) / (blockWidth + screenX);
-      if (self.options.center) { percentageX = 0.5; percentageY = 0.5; }
-
-      // Optional individual block speed as data attr, otherwise global speed
-      // Check if has percentage attr, and limit speed to 5, else limit it to 10
-      var speed = dataSpeed ? clamp(dataSpeed, -10, 10) : self.options.speed;
-      if (dataPercentage || self.options.center) {
-        speed = clamp(dataSpeed || self.options.speed, -5, 5);
-      }
-
-      var bases = updatePosition(percentageX, percentageY, speed);
-
-      // ~~Store non-translate3d transforms~~
-      // Store inline styles and extract transforms
-      var style = el.style.cssText;
-      var transform = '';
-
-      // Check if there's an inline styled transform
-      if (style.indexOf('transform') >= 0) {
-        // Get the index of the transform
-        var index = style.indexOf('transform');
-
-        // Trim the style to the transform point and get the following semi-colon index
-        var trimmedStyle = style.slice(index);
-        var delimiter = trimmedStyle.indexOf(';');
-
-        // Remove "transform" string and save the attribute
-        if (delimiter) {
-          transform = ' ' + trimmedStyle.slice(11, delimiter).replace(/\s/g, '');
-        } else {
-          transform = ' ' + trimmedStyle.slice(11).replace(/\s/g, '');
-        }
-      }
-
-      return {
-        baseX: bases.x,
-        baseY: bases.y,
-        top: blockTop,
-        left: blockLeft,
-        height: blockHeight,
-        width: blockWidth,
-        speed: speed,
-        style: style,
-        transform: transform,
-        zindex: dataZindex
-      };
-    };
-
-    // set scroll position (posY, posX)
-    // side effect method is not ideal, but okay for now
-    // returns true if the scroll changed, false if nothing happened
-    var setPosition = function () {
-      var oldY = posY;
-      var oldX = posX;
-
-      if (window.pageYOffset !== undefined) {
-        posY = window.pageYOffset;
-      } else {
-        posY = (document.documentElement || document.body.parentNode || document.body).scrollTop;
-      }
-
-      if (window.pageXOffset !== undefined) {
-        posX = window.pageXOffset;
-      } else {
-        posX = (document.documentElement || document.body.parentNode || document.body).scrollLeft;
-      }
-
-      if (oldY != posY && self.options.vertical) {
-        // scroll changed, return true
-        return true;
-      }
-
-      if (oldX != posX && self.options.horizontal) {
-        // scroll changed, return true
-        return true;
-      }
-
-      // scroll did not change
-      return false;
-    };
-
-
-    // Ahh a pure function, gets new transform value
-    // based on scrollPosition and speed
-    // Allow for decimal pixel values
-    var updatePosition = function (percentageX, percentageY, speed) {
-      var result = {};
-      var valueX = (speed * (100 * (1 - percentageX)));
-      var valueY = (speed * (100 * (1 - percentageY)));
-
-      result.x = self.options.round ? Math.round(valueX) : Math.round(valueX * 100) / 100;
-      result.y = self.options.round ? Math.round(valueY) : Math.round(valueY * 100) / 100;
-
-      return result;
-    };
-
-
-    //
-    var update = function () {
-      if (setPosition() && pause === false) {
-        animate();
-      }
-
-      // loop again
-      loop(update);
-    };
-
-    // Transform3d on parallax element
-    var animate = function () {
-      for (var i = 0; i < self.elems.length; i++) {
-        if (self.options.onscroll && blocks[i].top > (posY + screenY)) {
-          continue;
-        }
-
-        var percentageY = ((posY - blocks[i].top + screenY) / (blocks[i].height + screenY));
-        var percentageX = ((posX - blocks[i].left + screenX) / (blocks[i].width + screenX));
-
-        // Subtracting initialize value, so element stays in same spot as HTML
-        var positions = updatePosition(percentageX, percentageY, blocks[i].speed);// - blocks[i].baseX;
-        if (blocks[i].inViewport == false) {
-          blocks[i].baseY = positions.y;
-          blocks[i].baseX = positions.x;
-        }
-        blocks[i].inViewport = true;
-        var positionY = positions.y - blocks[i].baseY;
-        var positionX = positions.x - blocks[i].baseX;
-
-        var zindex = blocks[i].zindex;
-
-        // Move that element
-        // (Set the new translation and append initial inline transforms.)
-        var translate = 'translate3d(' + (self.options.horizontal ? positionX : '0') + 'px,' + (self.options.vertical ? positionY : '0') + 'px,' + zindex + 'px) ' + blocks[i].transform;
-        self.elems[i].style[transformProp] = translate;
-      }
-      self.options.callback(positions);
-    };
-
-
-    self.destroy = function () {
-      for (var i = 0; i < self.elems.length; i++) {
-        self.elems[i].style.cssText = blocks[i].style;
-      }
-      pause = true;
-    };
-
-
-    init();
-    return self;
-  };
-  return Rellax;
-}));
-
+/*============= Polyfills ==============*/
 
 // Polyfill: Element.matches
 if (!Element.prototype.matches) {
-  Element.prototype.matches =
-    Element.prototype.matchesSelector ||
-    Element.prototype.msMatchesSelector ||
-    Element.prototype.mozMatchesSelector ||
-    Element.prototype.webkitMatchesSelector ||
-    Element.prototype.oMatchesSelector;
+	Element.prototype.matches =
+		Element.prototype.matchesSelector ||
+		Element.prototype.msMatchesSelector ||
+		Element.prototype.mozMatchesSelector ||
+		Element.prototype.webkitMatchesSelector ||
+		Element.prototype.oMatchesSelector;
 }
 
 // Polyfill: Element.closest
 if (!Element.prototype.closest) {
-  Element.prototype.closest = function (s) {
-    var el = this;
-    while (el && el.nodeType === 1) {
-      if (Element.prototype.matches.call(el, s)) {
-        return el;
-      }
-      el = el.parentElement || el.parentNode;
-    }
-    return null;
-  };
+	Element.prototype.closest = function (s) {
+		var el = this;
+		while (el && el.nodeType === 1) {
+			if (Element.prototype.matches.call(el, s)) {
+				return el;
+			}
+			el = el.parentElement || el.parentNode;
+		}
+		return null;
+	};
 }
