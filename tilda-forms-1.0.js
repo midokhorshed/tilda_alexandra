@@ -1,23 +1,82 @@
 /*
- Скрипт сбрасывает все стандартные обработчики с форм и устанавливает свои обработки
- Для всех полей форм устанавливается валидация в соответствии с типом поля
- Все обработчики работают через делегирование и вещаются на rec блок
- Содержит кастомный и стандартный набор текстовых ошибок при не корректной валидации формы, в зависимости от этого
- добавляет текст и показывает или не показывает ошибки для формы, а также для каждого поля отдельно
- В обычных блоков ошибка формы содержится над или под формой, а дя ЗБ в popup плашке
- Каждая отправка с формы обрабатывается запросом и если данные корректны выводит сообщение об успешной отправке,
- а если не корректно, то выводит ошибку
- В случае спама формы результатом запроса может быть добавление google captcha на страницу для верификации на антибота
- В форму можно добавить платежную систему и после окончания успешной отправки подключить стороннюю систему на страницу
- для осуществления платежей
+Скрипт сбрасывает все стандартные обработчики с форм и устанавливает свои обработки
+Для всех полей форм устанавливается валидация в соответствии с типом поля
+Все обработчики работают через делегирование и вещаются на rec блок
+Содержит кастомный и стандартный набор текстовых ошибок при не корректной валидации формы, в зависимости от этого
+добавляет текст и показывает или не показывает ошибки для формы, а также для каждого поля отдельно
+В обычных блоков ошибка формы содержится над или под формой, а дя ЗБ в popup плашке
+Каждая отправка с формы обрабатывается запросом и если данные корректны выводит сообщение об успешной отправке,
+а если не корректно, то выводит ошибку
+В случае спама формы результатом запроса может быть добавление google captcha на страницу для верификации на антибота
+В форму можно добавить платежную систему и после окончания успешной отправки подключить стороннюю систему на страницу
+для осуществления платежей
 */
 
-//////
+window.t_form__browserLang = (window.navigator.userLanguage || window.navigator.language).toUpperCase().slice(0, 2);
+
+function t_forms__onReady(func) {
+    if (document.readyState != 'loading') {
+        func();
+    } else {
+        document.addEventListener('DOMContentLoaded', func);
+    }
+}
+
+/*
+ *	Language override based on attribute
+*/
+t_forms__onReady(function() {
+    var allrecords = document.getElementById('allrecords');
+
+    if (allrecords) {
+        var projectLang = allrecords.getAttribute('data-tilda-project-lang');
+		if (projectLang) {
+			window.t_form__browserLang = projectLang;
+		}
+    }
+
+});
+
+/**
+ * Language is defined. If it is Russian or English, the script starts immediately.
+ * If any other, the full dictionary is loaded and at the moment of its full loading
+ * the main script initFormsScript is launched
+ */
+(function () {
+	var lang = window.t_form__browserLang;
+
+	if (lang === 'RU' || lang === 'EN') {
+		initFormsScript();
+	} else {
+		var scriptUrl = 'tilda-forms-dict-1.0.js';
+		if (document.head.querySelector('script[src^="' + scriptUrl + '"]')) {
+			t_onFuncLoad('getFullDict', function () {
+				initFormsScript();
+			});
+		} else {
+			var script = document.createElement('script');
+			script.type = 'text/javascript';
+			script.src = scriptUrl;
+
+			script.onload = function () {
+				initFormsScript();
+			};
+
+			script.onerror = function () {
+				console.error('Failed to load resource: ', this.src);
+				initFormsScript();
+			};
+
+			document.head.appendChild(script);
+		}
+	}
+})();
+
 // All method for IE
 
 // Array.prototype.some
 if (!Array.prototype.some) {
-	Array.prototype.some = function(fn) {
+	Array.prototype.some = function (fn) {
 		'use strict';
 		if (this == null) {
 			throw new TypeError('Array.prototype.some called on null or undefined');
@@ -38,12 +97,12 @@ if (!Array.prototype.some) {
 }
 
 // Element.matches()
-(function(e) {
+(function (e) {
 	var matches = e.matches || e.matchesSelector || e.webkitMatchesSelector || e.mozMatchesSelector || e.msMatchesSelector || e.oMatchesSelector;
 	!matches ? (e.matches = e.matchesSelector = function matches(selector) {
 		var matches = document.querySelectorAll(selector);
 		var th = this;
-		return Array.prototype.some.call(matches, function(e) {
+		return Array.prototype.some.call(matches, function (e) {
 			return e === th;
 		});
 	}) : (e.matches = e.matchesSelector = matches);
@@ -64,8 +123,8 @@ if (!Element.prototype.closest) {
 }
 
 if (!String.prototype.trim) {
-	(function() {
-		String.prototype.trim = function() {
+	(function () {
+		String.prototype.trim = function () {
 			return this.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
 		};
 	})();
@@ -73,7 +132,7 @@ if (!String.prototype.trim) {
 
 // Polyfill: indexOf
 if (!Array.prototype.indexOf) {
-	Array.prototype.indexOf = function(searchElement, fromIndex) {
+	Array.prototype.indexOf = function (searchElement, fromIndex) {
 		'use strict';
 		var k;
 		if (this == null) {
@@ -104,12 +163,12 @@ if (!Array.prototype.indexOf) {
  * @param {Function} fn - callback function
  */
 function t_ready(fn) {
-	if (document.readyState != 'loading'){
+	if (document.readyState != 'loading') {
 		fn();
 	} else if (document.addEventListener) {
 		document.addEventListener('DOMContentLoaded', fn);
 	} else {
-		document.attachEvent('onreadystatechange', function() {
+		document.attachEvent('onreadystatechange', function () {
 			if (document.readyState != 'loading') {
 				fn();
 			}
@@ -172,9 +231,7 @@ function t_triggerEvent(el, eventName) {
 		el['on' + eventName]();
 	}
 
-	if (t_checkJqueryEvent(el, eventName)) {
-		$(el).trigger(eventName);
-	}
+	t_checkJqueryEvent(el, eventName);
 }
 
 /**
@@ -185,19 +242,28 @@ function t_triggerEvent(el, eventName) {
  * @returns {boolean} - return true/false
  */
 function t_checkJqueryEvent(element, eventName) {
-	var events = $._data(element, 'events') || false;
-	var isEvent = false;
+	var eventsEl = $._data(element, 'events') || false;
+	var eventsDocument = $._data(document, 'events') || false;
+	var isTrigger = false;
 
-	if (events) {
-		for (var key in events) {
+	if (eventsEl) {
+		for (var key in eventsEl) {
 			if (key === eventName) {
-				isEvent = true;
+				$(element).trigger(eventName);
+				isTrigger = true;
 				break;
 			}
 		}
 	}
 
-	return isEvent;
+	if (eventsDocument && !isTrigger) {
+		for (var key in eventsDocument) {
+			if (key === eventName) {
+				$(document).trigger($.Event(eventName, {target: element}));
+				break;
+			}
+		}
+	}
 }
 
 /**
@@ -340,7 +406,7 @@ function t_formData(obj) {
 function t_fadeOut(el) {
 	if (el.style.display === 'none') return;
 	var opacity = 1;
-	var timer = setInterval(function() {
+	var timer = setInterval(function () {
 		el.style.opacity = opacity;
 		opacity -= 0.1;
 		if (opacity <= 0.1) {
@@ -362,7 +428,7 @@ function t_fadeIn(el) {
 	var opacity = 0;
 	el.style.opacity = opacity;
 	el.style.display = 'block';
-	var timer = setInterval(function() {
+	var timer = setInterval(function () {
 		el.style.opacity = opacity;
 		opacity += 0.1;
 		if (opacity >= 1.0) {
@@ -378,12 +444,45 @@ function t_fadeIn(el) {
  * @returns {boolean} - return true/false
  */
 function t_isEmptyObject(obj) {
-    for (var key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-            return false;
-        }
-    }
-    return true;
+	for (var key in obj) {
+		if (Object.prototype.hasOwnProperty.call(obj, key)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+/**
+ * Parsing a string with scripts
+ *
+ * @param {Node} main - container scripts
+ * @param {string} className - class name search script
+ */
+function t_parseScripts(main, className) {
+	var scripts = main.querySelectorAll(className + 'script');
+
+	for (var i = 0; i < scripts.length; i++) {
+		var oldScript = scripts[i];
+		var newScript = document.createElement('script');
+
+		for (var j = 0; j < oldScript.attributes.length; j++) {
+			var attr = oldScript.attributes[j];
+
+			newScript.setAttribute(attr.name, attr.value);
+		}
+
+		if (oldScript.innerHTML.length === 0) {
+			var script = document.createElement('script');
+
+            script.src = oldScript.attributes.src.value;
+            main.appendChild(script);
+
+			t_removeEl(oldScript);
+		} else {
+			newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+            oldScript.parentNode.replaceChild(newScript, oldScript);
+		}
+	}
 }
 
 /**
@@ -394,349 +493,70 @@ function t_isEmptyObject(obj) {
  */
 function t_form_dict(msg) {
 	var dict = [];
+	var lang = window.t_form__browserLang;
 
-	dict['success'] = {
-		EN: 'Thank you! Your data has been submitted.',
-		RU: 'Спасибо! Данные успешно отправлены.',
-		FR: 'Merci! Vos données ont été soumises.',
-		DE: 'Vielen Dank! Ihre Daten wurden vorgelegt.',
-		ES: '¡Gracias! Sus datos se han presentado.',
-		PT: 'Obrigada! Seus dados foram submetidos.',
-		UK: 'Дякую! Дані успішно відправлені.',
-		JA: 'ありがとうございました！あなたのデータが送信されました。',
-		ZH: '谢谢！您的数据已提交。',
-		PL: 'Dziękuję! Dane wysłane pomyślnie.',
-		KK: 'Рақмет сізге! Сіздің деректер ұсынылған болатын.',
-		IT: 'Grazie! I suoi dati è stata presentata.',
-		LV: 'Paldies! ir iesniegts jūsu dati.',
-	};
+	if (typeof getFullDict === 'function' && (lang !== 'RU' || lang !== 'EN')) {
+		dict = getFullDict();
+	} else {
+		dict['EN'] = {
+			success: 'Thank you! Your data has been submitted.',
+			successorder: 'Thank you! Order created. Please wait while you are redirected to the payment page...',
+			email: 'Please enter a valid email address',
+			url: 'Please put a correct URL',
+			phone: 'Please put a correct phone number',
+			number: 'Please put a correct number',
+			date: 'Please put a correct date',
+			time: 'Please put a correct time (HH:mm)',
+			name: 'Please put a name',
+			namerus: 'Please put a correct name (only cyrillic letters)',
+			nameeng: 'Please put a correct name (only latin letters)',
+			string: 'You put incorrect symbols. Only letters, numbers and punctuation symbols are allowed',
+			req: 'Please fill out all required fields',
+			reqfield: 'Required field',
+			minlength: 'Value is too short',
+			maxlength: 'Value too big',
+			emptyfill: 'None of the fields are filled in',
+			chosevalue: 'Please select an address from the options',
+			deliveryreq: 'It is not possible to place an order without delivery. Please refresh the page and try again',
+			promocode: 'Please activate promo code or clear input field',
+		};
 
-	dict['successorder'] = {
-		EN: 'Thank you! Order created. Please wait. We are going to the payment...',
-		RU: 'Спасибо! Заказ оформлен. Пожалуйста, подождите. Идет переход к оплате....',
-		FR: 'Merci! Ordre créé. S\'il vous plaît, attendez. Nous allons le paiement ...',
-		DE: 'Vielen Dank! Bestellen Sie erstellt. Warten Sie mal. Wir gehen auf die Zahlung ...',
-		ES: '¡Gracias! Orden creado. Espere por favor. Vamos al pago ...',
-		PT: 'Obrigada! Pedido criado. Por favor, aguarde. Estamos indo para o pagamento ...',
-		UK: 'Дякую! Замовлення оформлене. Будь ласка зачекайте. Йде перехід до оплати...',
-		JA: 'ありがとうございました！注文が作成しました。お待ちください。私達は支払しようとしています...',
-		ZH: '谢谢！为了创建。请稍等。我们要支付...',
-		PL: 'Dziękuję! Twoje zamówienie potwierdzono. Proszę czekać. Przechodzimy do płatności...',
-		KK: 'Рақмет сізге! Тапсырыс беру құрылған. Өтінемін күте тұрыңыз. Біз төлеу барамыз...',
-		IT: 'Grazie! Ordine creato. Attendere prego. Stiamo per il pagamento...',
-		LV: 'Paldies! Pasūtījums ir izveidots. Lūdzu uzgaidiet. Mēs gatavojamies maksājumu ...',
-	};
-
-	dict['email'] = {
-		EN: 'Please enter a valid email address',
-		RU: 'Укажите, пожалуйста, корректный email',
-		FR: 'S\'il vous plaît mettre un bon e-mail',
-		DE: 'Bitte legen Sie eine korrekte e-mail',
-		ES: 'Por favor, ponga un correo electrónico correcta',
-		PT: 'Por favor, coloque um e-mail correto',
-		UK: 'Вкажіть, будь ласка, коректний email',
-		JA: '正しい電子メールを入れてください',
-		ZH: '请把正确的电子邮件',
-		PL: 'Wpisz poprawny email',
-		KK: 'дұрыс электрондық пошта қоюға сұраймыз',
-		IT: 'Si prega di inserire una corretta e-mail',
-		LV: 'Lūdzu, ielieciet pareizo e-pastu',
-	};
-
-	dict['url'] = {
-		EN: 'Please put a correct URL',
-		RU: 'Укажите, пожалуйста, корректный URL',
-		FR: 'S\'il vous plaît mettre une URL correcte',
-		DE: 'Bitte legen Sie eine korrekte URL',
-		ES: 'Por favor, ponga una URL correcta',
-		PT: 'Por favor, coloque a URL correta',
-		UK: 'Вкажіть, будь ласка, коректний URL',
-		JA: '正しいURLを入れてください',
-		ZH: '请把正确的URL',
-		PL: 'Wpisz poprawny URL',
-		KK: 'Дұрыс URL қоюға сұраймыз',
-		IT: 'Si prega di inserire un URL corretto',
-		LV: 'Lūdzu, ielieciet pareizo URL',
-	};
-
-	dict['phone'] = {
-		EN: 'Please put a correct phone number',
-		RU: 'Укажите, пожалуйста, корректный номер телефона',
-		FR: 'S\'il vous plaît mettre un bon numéro de téléphone',
-		DE: 'Bitte legen Sie eine korrekte Telefonnummer',
-		ES: 'Por favor, ponga un número de teléfono correcto',
-		PT: 'Por favor, coloque um número de telefone correto',
-		UK: 'Вкажіть, будь ласка, коректний номер телефону',
-		JA: '正しい電話番号を入れてください',
-		ZH: '请把正确的电话号码',
-		PL: 'Wpisz poprawny nr telefonu',
-		KK: 'Дұрыс телефон нөмірін қоюға сұраймыз',
-		IT: 'Si prega di inserire un numero di telefono corretto',
-		LV: 'Lūdzu, ielieciet pareizo tālruņa numuru',
-	};
-
-	dict['number'] = {
-		EN: 'Please put a correct number',
-		RU: 'Укажите, пожалуйста, корректный номер',
-		FR: 'S\'il vous plaît mettre un nombre correct',
-		DE: 'Bitte legen Sie eine richtige Nummer',
-		ES: 'Por favor, ponga un número correcto',
-		PT: 'Por favor, coloque um número correto',
-		UK: 'Вкажіть, будь ласка, коректний номер',
-		JA: '正しい番号を入れてください',
-		ZH: '请把正确数量',
-		PL: 'Wpisz poprawny numer',
-		KK: 'Дұрыс бірқатар қоюға сұраймыз',
-		IT: 'Si prega di inserire un numero corretto',
-		LV: 'Lūdzu, ielieciet pareizo numuru',
-	};
-
-	dict['date'] = {
-		EN: 'Please put a correct date',
-		RU: 'Укажите, пожалуйста, корректную дату',
-		FR: 'S\'il vous plaît mettre une date correcte',
-		DE: 'Bitte legen Sie ein korrektes Datum',
-		ES: 'Por favor, ponga una fecha correcta',
-		PT: 'Por favor, coloque uma data correta',
-		UK: 'Вкажіть, будь ласка, коректну дату',
-		JA: '正しい日付を入れてください',
-		ZH: '请把正确的日期',
-		PL: 'Wpisz poprawną datę',
-		KK: 'Дұрыс күнді қоюға сұраймыз',
-		IT: 'Si prega di inserire una data corretta',
-		LV: 'Lūdzu, ielieciet pareizo datumu',
-	};
-
-	dict['time'] = {
-		EN: 'Please put a correct time (HH:mm)',
-		RU: 'Укажите, пожалуйста, корректное время (ЧЧ:ММ)',
-		FR: 'S\'il vous plaît mettre un heure (HH:mm)',
-		DE: 'Bitte legen Sie eine korrekte Zeit (HH:mm)',
-		ES: 'Por favor, ponga una hora correcta (HH:MM)',
-		PT: 'Por favor, coloque a hora correcta (HH:mm)',
-		UK: 'Вкажіть, будь ласка, коректний час (ГГ:ХХ)',
-		JA: '正しい時刻（HH：mm）を入れてください',
-		ZH: '请把正确的时间（HH：MM）',
-		PL: 'Wpisz poprawną godzinę (god:min)',
-		KK: 'Дұрыс уақыт (HH: мм) салып сұраймыз',
-		IT: 'Si prega di inserire un tempo corretto (hh:mm)',
-		LV: 'Lūdzu, ielieciet pareizo laiku (HH:mm)',
-	};
-
-	dict['name'] = {
-		EN: 'Please put a name',
-		RU: 'Укажите, пожалуйста, имя',
-		FR: 'S\'il vous plaît mettre un nom',
-		DE: 'Bitte legen Sie einen Namen',
-		ES: 'Por favor, ponga un nombre',
-		PT: 'Por favor, coloque um nome',
-		UK: 'Вкажіть, будь ласка, ім\'я',
-		JA: '名前を入れてください',
-		ZH: '请把姓名',
-		PL: 'Wpisz pełne imię',
-		KK: 'Атын қоюға сұраймыз',
-		IT: 'Si prega di inserire un nome',
-		LV: 'Lūdzu ielieciet vārdu',
-	};
-
-	dict['namerus'] = {
-		EN: 'Please put a correct name (only cyrillic letters)',
-		RU: 'Укажите, пожалуйста, имя (только кириллица)',
-		FR: 'S\'il vous plaît mettre un nom correct (seulement lettres cyrilliques)',
-		DE: 'Bitte legen Sie einen richtigen Namen (nur kyrillische Buchstaben)',
-		ES: 'Por favor, ponga un nombre correcto (sólo letras cirílico)',
-		PT: 'Por favor, coloque um nome correto (somente letras em cirílico)',
-		UK: 'Вкажіть, будь ласка, ім\'я (тільки кирилиця)',
-		JA: '正しい名前（だけキリル文字）を入れてください',
-		ZH: '请把正确的名称（仅西里尔字母）',
-		PL: 'Wpisz imię',
-		KK: 'Дұрыс атауын (тек кирилл әріптері) салып сұраймыз',
-		IT: 'Si prega di inserire un nome corretto (solo caratteri cirillici)',
-		LV: 'Lūdzu, ielieciet pareizo nosaukumu (tikai kirilicas burti)',
-	};
-
-	dict['nameeng'] = {
-		EN: 'Please put a correct name (only latin letters)',
-		RU: 'Укажите, пожалуйста, имя (только латиница)',
-		FR: 'S\'il vous plaît mettre un nom correct (seulement lettres latines)',
-		DE: 'Bitte legen Sie einen richtigen Namen (nur lateinische Buchstaben)',
-		ES: 'Por favor, ponga un nombre correcto (sólo letras latinas)',
-		PT: 'Por favor, coloque um nome correto (somente letras latinas)',
-		UK: 'Вкажіть, будь ласка, ім\'я (тільки латиниця)',
-		JA: '正しい名前（のみラテン文字）を入れてください',
-		ZH: '请把正确的名称（仅限拉丁字母）',
-		PL: 'Wpisz imię',
-		KK: 'дұрыс атауын (тек латын әріптері) салып сұраймыз',
-		IT: 'Si prega di inserire un nome corretto (solo lettere latine)',
-		LV: 'Lūdzu, ielieciet pareizo nosaukumu (tikai latīņu burtiem)',
-	};
-
-	dict['string'] = {
-		EN: 'You put incorrect symbols. Only letters, numbers and punctuation symbols are allowed',
-		RU: 'Вы написали некорректные символы. Разрешены только буквы, числа и знаки пунктуации',
-		FR: 'Vous mettez des symboles incorrects. Seules les lettres, chiffres et signes de ponctuation sont autorisés',
-		DE: 'Sie setzen falsche Symbole. Nur Buchstaben, Zahlen und Satzzeichen sind erlaubt',
-		ES: 'Pones símbolos incorrectos. Sólo letras, números y signos de puntuación están permitidos',
-		PT: 'Você coloca símbolos incorretos. Somente letras, números e sinais de pontuação são permitidos',
-		UK: 'Ви написали некоректні символи. Дозволені лише літери, числа і знаки пунктуації',
-		JA: 'あなたは間違ったシンボルを置きます。唯一の文字、数字、句読点記号が許可されています',
-		ZH: '你把不正确的符号。只有字母，数字和标点符号被允许',
-		PL: 'Wpisane niepoprawne symbole, akceptowane litery, cyfry i znaki interpunkcyjne',
-		KK: 'Сіз дұрыс қоюға рәміздер. Тек әріптер, сандар және пунктуация рәміздер рұқсат етілген',
-		IT: 'Hai messo i simboli non corretti. Solo lettere, numeri e simboli di punteggiatura sono permessi',
-		LV: 'Jūs nodot nepareizu simbolus. Tikai burtus, ciparus un pieturzīmes simboli ir atļauts',
-	};
-
-	dict['req'] = {
-		EN: 'Please fill out all required fields',
-		RU: 'Пожалуйста, заполните все обязательные поля',
-		FR: 'S\'il-vous-plaît remplissez tous les champs requis',
-		DE: 'Bitte füllen Sie alle erforderlichen Felder aus',
-		ES: 'Por favor llene todos los campos requeridos',
-		PT: 'Por favor preencha todos os campos requeridos',
-		UK: 'Будь ласка, заповніть всі обов\'язкові поля',
-		JA: 'すべての必須項目を記入してください。',
-		ZH: '请填写所有必填字段',
-		PL: 'Proszę wypełnić wszystkie pola',
-		KK: 'Барлық қажетті өрістерді толтырыңыз',
-		IT: 'Si prega di compilare tutti i campi richiesti',
-		LV: 'Lūdzu, aizpildiet visus nepieciešamos laukus',
-	};
-
-	dict['reqfield'] = {
-		EN: 'Required field',
-		RU: 'Обязательное поле',
-		FR: 'champs requis',
-		DE: 'Pflichtfeld',
-		ES: 'Campo requerido',
-		PT: 'Campo obrigatório',
-		UK: 'Обов\'язкове поле',
-		JA: '必須入力フィールド',
-		ZH: '必填项目',
-		PL: 'Pole obowiązkowe',
-		KK: 'Міндетті өріс',
-		IT: 'Campo obbligatorio',
-		LV: 'Obligāts lauks',
-	};
-
-	dict['minlength'] = {
-		EN: 'Value is too short',
-		RU: 'Слишком короткое значение',
-		FR: 'La valeur est trop courte',
-		DE: 'Der Wert ist zu kurz',
-		ES: 'El valor es demasiado corta',
-		PT: 'O valor é muito curto',
-		UK: 'Занадто коротке значення',
-		JA: '値が短すぎます',
-		ZH: '值太短',
-		PL: 'Za krótko',
-		KK: 'Мән тым қысқа',
-		IT: 'Il valore è troppo breve',
-		LV: 'Vērtība ir pārāk īss',
-	};
-
-	dict['maxlength'] = {
-		EN: 'Value too big',
-		RU: 'Слишком длинное',
-		FR: 'Valeur trop',
-		DE: 'Wert zu groß',
-		ES: 'Valor demasiado grande',
-		PT: 'Valor muito grande',
-		UK: 'Занадто довге',
-		JA: '値が大きすぎます',
-		ZH: '值过大',
-		PL: 'Zbyt długie',
-		KK: 'Шамасы тым үлкен',
-		IT: 'Valore troppo grande',
-		LV: 'Vērtība ir pārāk liela',
-	};
-
-	dict['emptyfill'] = {
-		EN: 'None of the fields are filled in',
-		RU: 'Ни одно поле не заполнено',
-		FR: 'Aucun des champs sont remplis',
-		DE: 'Keines der Felder sind ausgefüllt',
-		ES: 'Ninguno de los campos se rellenan',
-		PT: 'Nenhum dos campos estão preenchidos',
-		UK: 'Жодне поле не заповнено',
-		JA: 'フィールドのどれもに充填されていません',
-		ZH: '该字段均填写',
-		PL: 'Żadne pole nie jest wypełnione',
-		KK: 'Кен ешқайсысы толтырылады',
-		IT: 'Nessuno dei campi sono riempiti in',
-		LV: 'Neviens no laukiem ir aizpildīts',
-	};
-
-	dict['chosevalue'] = {
-		EN: 'Please select an address from the options',
-		RU: 'Пожалуйста, выберите адрес из предложенных вариантов',
-		FR: 'S\'il vous plaît sélectionner une adresse parmi les options',
-		DE: 'Bitte wählen Sie eine Adresse aus den Optionen',
-		ES: 'Por favor, seleccione una dirección de una de las opciones',
-		PT: 'Por favor seleccione um endereço entre as opções',
-		UK: 'Будь ласка, виберіть адресу із запропонованих варіантів',
-		JA: 'オプションからアドレスを選択してください',
-		ZH: '请从选择的地址',
-		PL: 'Proszę wybrać adres wśród oferowanych opcji',
-		KK: 'Параметрлерден мекенжайды таңдаңыз',
-		IT: 'Si prega di selezionare un indirizzo tra le opzioni',
-		LV: 'Lūdzu, izvēlieties adresi no iespējām',
-	};
-
-	dict['deliveryreq'] = {
-		EN: 'It is not possible to place an order without delivery. Please refresh the page and try again',
-		RU: 'Невозможно оформить заказ без доставки. Пожалуйста, перезагрузите страницу и попробуйте еще раз.',
-		FR: 'Il est impossible de passer une commande sans livraison. S\'il vous plaît rafraîchir la page et réessayer',
-		DE: 'Es ist nicht möglich, eine Bestellung ohne Lieferung zu platzieren. Bitte aktualisieren Sie die Seite und versuchen Sie es erneut',
-		ES: 'No es posible colocar una orden sin entrega. Por favor, actualice la página y vuelva a intentarlo',
-		PT: 'Não é possível colocar uma ordem sem entrega. Por favor, atualize a página e tente novamente',
-		UK: 'Неможливо оформити замовлення без доставки. Будь ласка, перезавантажте сторінку і спробуйте ще раз.',
-		JA: '配達せずに注文することはできません。ページを更新して、もう一度お試しください',
-		ZH: '这是不可能发出订单交货没有。请刷新页面，然后再试一次',
-		PL: 'Nie jest możliwe, aby złożyć zamówienie bez dostawy. Odśwież stronę i spróbuj ponownie',
-		KK: 'Ол жеткізу жоқ тапсырысты орналастыру мүмкін емес. Бетті жаңартып, қайталап көріңіз',
-		IT: 'Non è possibile effettuare un ordine senza la consegna. perfavore ricarica la pagina e riprova',
-		LV: 'Tas nav iespējams veikt pasūtījumu bez piegādes. Lūdzu, atsvaidziniet lapu un mēģiniet vēlreiz',
-	};
-
-	dict['promocode'] = {
-		EN: 'Please activate promo code or clear input field',
-		RU: 'Активируйте, пожалуйста промокод или очистите поле',
-		FR: 'Veuillez activer le code promotionnel ou nettoyer le champ',
-		DE: 'Aktivieren Sie bitte den Aktionscode oder löschen Sie das Feld',
-		ES: 'Active, por favor el código promocional o limpie el campo',
-		PT: 'Ative, por favor o código promocional ou limpe o campo',
-		UK: 'Активуйте, будь ласка промокод або очистіть поле',
-		JA: 'プロモーションコードを有効にするか、フィールドをクリアしてください',
-		ZH: '请激活促销代码或清除字段',
-		PL: 'Aktywuj kod promocyjny lub wyczyść pole',
-		KK: 'Промокодты іске қосыңыз немесе өрісті тазалаңыз',
-		IT: 'Si prega di attivare il codice promozionale o cancellare il campo',
-		LV: 'Ieslēdziet, lūdzu akcijas kodu vai notīriet lauku',
-	};
-
-	var lang = window.browserLang;
-
-	if (dict[msg]) {
-		if (dict[msg][lang]) {
-			return dict[msg][lang];
-		} else {
-			return dict[msg]['EN'];
-		}
+		dict['RU'] = {
+			success: 'Спасибо! Данные успешно отправлены.',
+			successorder: 'Спасибо! Заказ оформлен. Пожалуйста, подождите. Идет переход к оплате...',
+			email: 'Укажите, пожалуйста, корректный email',
+			url: 'Укажите, пожалуйста, корректный URL',
+			phone: 'Укажите, пожалуйста, корректный номер телефона',
+			number: 'Укажите, пожалуйста, корректный номер',
+			date: 'Укажите, пожалуйста, корректную дату',
+			time: 'Укажите, пожалуйста, корректное время (ЧЧ:ММ)',
+			name: 'Укажите, пожалуйста, имя',
+			namerus: 'Укажите, пожалуйста, имя (только кириллица)',
+			nameeng: 'Укажите, пожалуйста, имя (только латиница)',
+			string: 'Вы написали некорректные символы. Разрешены только буквы, числа и знаки пунктуации',
+			req: 'Пожалуйста, заполните все обязательные поля',
+			reqfield: 'Обязательное поле',
+			minlength: 'Слишком короткое значение',
+			maxlength: 'Слишком длинное',
+			emptyfill: 'Ни одно поле не заполнено',
+			chosevalue: 'Пожалуйста, выберите адрес из предложенных вариантов',
+			deliveryreq: 'Невозможно оформить заказ без доставки. Пожалуйста, перезагрузите страницу и попробуйте еще раз.',
+			promocode: 'Активируйте, пожалуйста промокод или очистите поле',
+		};
 	}
 
-	return '';
+	return dict[lang] ? dict[lang][msg] : dict['EN'][msg];
 }
 
 /**
  * Init forms
  */
-(function () {
+function initFormsScript() {
 	window.scriptSysPayment = {};
 	window.handlerSysPayment = {};
-	window.tildaFormData = {};
 	window.isInitEventsZB = {};
 	window.isInitEventsCustomMask = {};
+	window.initForms = {};
 
 	window.tildaForm = {
 		versionLib: '02.001',
@@ -745,8 +565,8 @@ function t_form_dict(msg) {
 		currentFormProccessing: false
 	};
 	/* eslint-disable */
-	t_ready(function() {
-		window.tildaForm.captchaCallback = function() {
+	t_ready(function () {
+		window.tildaForm.captchaCallback = function () {
 			if (!window.tildaForm.currentFormProccessing || !window.tildaForm.currentFormProccessing.form) {
 				return false;
 			}
@@ -762,7 +582,6 @@ function t_form_dict(msg) {
 		 * @returns {Object} - validation input args
 		 */
 		window.tildaForm.validate = function(form) {
-			// TODO: jq element falls in function
 			if (!(form instanceof Element)) form = form[0];
 
 			var inputs = form.querySelectorAll('.js-tilda-rule');
@@ -816,7 +635,7 @@ function t_form_dict(msg) {
 				) {
 					objError.type.push('req');
 				} else {
-					switch(dataRule) {
+					switch (dataRule) {
 						case 'email':
 							regExp = /^(?!\.)(?!.*\.\.)[a-zA-Zёа-яЁА-Я0-9\u2E80-\u2FD5\u3190-\u319f\u3400-\u4DBF\u4E00-\u9FCC\uF900-\uFAAD_\.\-\+]{0,63}[a-zA-Zёа-яЁА-Я0-9\u2E80-\u2FD5\u3190-\u319f\u3400-\u4DBF\u4E00-\u9FCC\uF900-\uFAAD_\-\+]@[a-zA-Zёа-яЁА-ЯЁёäöüÄÖÜßèéû0-9][a-zA-Zёа-яЁА-ЯЁёäöüÄÖÜßèéû0-9\.\-]{0,253}\.[a-zA-Zёа-яЁА-Я]{2,10}$/gi;
 							if (value.length > 0 && !value.match(regExp)) {
@@ -833,9 +652,9 @@ function t_form_dict(msg) {
 								} else {
 									strValue = strValue[0];
 								}
-								strValue = str.split('/');
+								strValue = strValue.split('/');
 								if (strValue && strValue.length > 0 && strValue[0] > '') {
-									strValue = str[0];
+									strValue = strValue[0];
 									if (!strValue.match(regExp)) {
 										objError.type.push('url');
 									}
@@ -849,7 +668,22 @@ function t_form_dict(msg) {
 							break;
 
 						case 'phone':
-							regExp = /^[0-9\(\)\-\+]+$/gi;
+							var phoneMask = input.getAttribute('data-tilda-mask');
+							var strRegExp = '\^[0-9()+-';
+
+							if (phoneMask) {
+								if (phoneMask.indexOf('*') > 0) {
+									strRegExp += 'a-zёа-я';
+								} else {
+									if (phoneMask.indexOf('a') > 0) strRegExp += 'a-z';
+									if (phoneMask.indexOf('а') > 0) strRegExp += 'а-яё';
+								}
+							}
+
+							strRegExp += ']\+\$';
+
+							regExp = new RegExp(strRegExp, 'gi');
+
 							if (valueNoSpace.length > 0 && !valueNoSpace.match(regExp)) {
 								objError.type.push('phone');
 							} else {
@@ -931,7 +765,7 @@ function t_form_dict(msg) {
 							break;
 
 						case 'promocode':
-							if (dataFormCart === 'y' && valueNoSpace.length > 0 && window.tcart && (! window.tcart.promocode || ! window.tcart.prodamount_discountsum)) {
+							if (dataFormCart === 'y' && valueNoSpace.length > 0 && window.tcart && (!window.tcart.promocode || !window.tcart.prodamount_discountsum)) {
 								objError.type.push('promocode');
 							}
 							break;
@@ -1001,8 +835,12 @@ function t_form_dict(msg) {
 		 *
 		 * @param {Node} form - active form
 		 */
-		window.tildaForm.hideErrors = function(form) {
-			// TODO: jq element falls in function
+		window.tildaForm.hideErrors = function (form) {
+			if (typeof form === 'object') {
+				if (form.length === 0) {
+					return;
+				}
+			}
 			if (!(form instanceof Element)) form = form[0];
 
 			var errorBoxs = form.querySelectorAll('.js-errorbox-all');
@@ -1053,7 +891,6 @@ function t_form_dict(msg) {
 		 * @returns
 		 */
 		window.tildaForm.showErrorInPopup = function(form, arrErrors) {
-			// TODO: jq element falls in function
 			if (!(form instanceof Element)) form = form[0];
 
 			if (!arrErrors || arrErrors.length === 0) {
@@ -1080,7 +917,7 @@ function t_form_dict(msg) {
 				document.body.insertAdjacentHTML('beforeend', '<div id="tilda-popup-for-error" class="js-form-popup-errorbox tn-form__errorbox-popup" style="display: none;"> <div class="t-form__errorbox-text t-text t-text_xs"> error </div> <div class="tn-form__errorbox-close js-errorbox-close"> <div class="tn-form__errorbox-close-line tn-form__errorbox-close-line-left"></div> <div class="tn-form__errorbox-close-line tn-form__errorbox-close-line-right"></div> </div> </div>');
 				popupError = document.getElementById('tilda-popup-for-error');
 
-				t_addEventListener(popupError, 'click', function(event) {
+				t_addEventListener(popupError, 'click', function (event) {
 					event = event || window.event;
 					var target = event.target || event.srcElement;
 					var closeBtn = target.closest('.js-errorbox-close') ? true : false;
@@ -1102,7 +939,7 @@ function t_form_dict(msg) {
 				}
 
 				var el = arrErrors[i].obj;
-				// TODO: jq element in object
+
 				if (!(el instanceof Element)) el = el[0];
 
 				if (el) {
@@ -1124,19 +961,17 @@ function t_form_dict(msg) {
 					strError = '';
 
 					if (isShowErrors) {
-						errorItem = form.querySelectorAll('.js-rule-error-' + error);
+						errorItem = form.querySelector('.js-rule-error-' + error);
 
-						if (errorItem.length > 0) {
-							for (var k = 0; k < errorItem.length; k++) {
-								if ((!errorItem[k].textContent || !errorItem[k].innerText) && localizedError) {
-									if (strCommonError.indexOf(localizedError) === -1) {
-										strCommonError = strCommonError + '<p class="t-form__errorbox-item">' + localizedError + '</p>';
-									}
-								} else {
-									strError = errorItem[0].textContent || errorItem[0].innerText;
-									if (strCommonError.indexOf(localizedError) === -1) {
-										strCommonError = strCommonError + '<p class="t-form__errorbox-item">' + strError + '</p>';
-									}
+						if (errorItem) {
+							if ((!errorItem.textContent || !errorItem.innerText) && localizedError) {
+								if (strCommonError.indexOf(localizedError) === -1) {
+									strCommonError = strCommonError + '<p class="t-form__errorbox-item">' + localizedError + '</p>';
+								}
+							} else {
+								strError = errorItem.textContent || errorItem.innerText;
+								if (strCommonError.indexOf(localizedError) === -1) {
+									strCommonError = strCommonError + '<p class="t-form__errorbox-item">' + strError + '</p>';
 								}
 							}
 						} else if (localizedError) {
@@ -1249,8 +1084,7 @@ function t_form_dict(msg) {
 		 * @param {Array} arrErrors
 		 * @returns {boolean} error if array arErrors is not empty and return true. If arrErrors is empty then return false
 		 */
-		window.tildaForm.showErrors = function(form, arrErrors) {
-			// TODO: jq element falls in function
+		window.tildaForm.showErrors = function (form, arrErrors) {
 			if (!(form instanceof Element)) form = form[0];
 
 			if (!arrErrors || arrErrors.length == 0) {
@@ -1287,7 +1121,7 @@ function t_form_dict(msg) {
 				}
 
 				var el = arrErrors[i].obj;
-				// TODO: jq element in object
+
 				if (!(el instanceof Element)) el = el[0];
 
 				if (el) {
@@ -1359,7 +1193,7 @@ function t_form_dict(msg) {
 
 			var errorBoxs = form.querySelectorAll('.js-errorbox-all');
 
-			for(var i = 0; i < errorBoxs.length; i++) {
+			for (var i = 0; i < errorBoxs.length; i++) {
 				errorBoxs[i].style.display = 'block';
 			}
 
@@ -1400,11 +1234,11 @@ function t_form_dict(msg) {
 						t_removeEl(formCaptchaBox);
 					}
 
-					t_triggerEvent(tildaCaptcha.closest('form'), 'submit');
+					var form = tildaCaptcha.closest('form');
+
+					if (form) t_forms__submitEvent(form);
 				}
-				return;
 			}
-			return;
 		}
 
 		/**
@@ -1413,8 +1247,7 @@ function t_form_dict(msg) {
 		 * @param {Node} form - block form
 		 * @param {string} formKey - form key
 		 */
-		window.tildaForm.addTildaCaptcha = function(form, formKey) {
-			// TODO: jq element falls in function
+		window.tildaForm.addTildaCaptcha = function (form, formKey) {
 			if (!(form instanceof Element)) form = form[0];
 
 			var formCaptchaBox = document.getElementById('tildaformcaptchabox');
@@ -1450,8 +1283,7 @@ function t_form_dict(msg) {
 		 * @param {Node} form - block form
 		 * @returns {boolean} - return true/false
 		 */
-		window.tildaForm.addMebersInfoToForm = function(form) {
-			// TODO: jq element falls in function
+		window.tildaForm.addMebersInfoToForm = function (form) {
 			if (!(form instanceof Element)) form = form[0];
 
 			try {
@@ -1484,8 +1316,7 @@ function t_form_dict(msg) {
 		 *
 		 * @param {Node} form block form
 		 */
-		window.tildaForm.addPaymentInfoToForm = function(form) {
-			// TODO: jq element falls in function
+		window.tildaForm.addPaymentInfoToForm = function (form) {
 			if (!(form instanceof Element)) form = form[0];
 
 			var allRecords = document.getElementById('allrecords');
@@ -1732,8 +1563,7 @@ function t_form_dict(msg) {
 		 *
 		 * @param {Node} form - block form
 		 */
-		window.tildaForm.clearTCart = function(form) {
-			// TODO: jq element falls in function
+		window.tildaForm.clearTCart = function (form) {
 			if (!(form instanceof Element)) form = form[0];
 
 			if (form.getAttribute('data-formcart') === 'y') {
@@ -1772,11 +1602,9 @@ function t_form_dict(msg) {
 		 * @param {Object} objNext - obj data after successful sending
 		 * @returns {boolean} - return true/false
 		 */
-		window.tildaForm.payment = function(form, objNext) {
-			// TODO: jq element falls in function
+		window.tildaForm.payment = function (form, objNext) {
 			if (!(form instanceof Element)) form = form[0];
 
-			var formId = form.getAttribute('id');
 			var successBox = form.querySelector('.js-successbox');
 
 			if (form.getAttribute('data-formpaymentoff') === 'y') {
@@ -1787,12 +1615,7 @@ function t_form_dict(msg) {
 			if (successBox) {
 				var successBoxText = successBox.textContent || successBox.innerText;
 				if (successBoxText) {
-					window.tildaFormData[formId] = {
-						'form': {
-							'el': form,
-							'successMessage': successBoxText
-						}
-					};
+					form.tildaSuccessMessage = successBoxText;
 				}
 
 				if (t_form_dict('successorder')) {
@@ -1829,7 +1652,7 @@ function t_form_dict(msg) {
 					for (var key in objNext.value) {
 						valueKey = objNext.value[key];
 						if (typeof (valueKey) != 'function' && valueKey) {
-							strHtml += '<input type="hidden" name="' + key + '" value="' + valueKey + '" >';
+							strHtml += "<input type='hidden' name='" + key + "' value='" + valueKey + "' >";
 						}
 					}
 
@@ -1840,10 +1663,10 @@ function t_form_dict(msg) {
 					window.tildaForm.clearTCart(form);
 
 					if (paymentForm.getAttribute('action')) {
-						t_triggerEvent(paymentForm, 'submit');
+						paymentForm.submit();
 					} else {
-						setTimeout(function() {
-							t_triggerEvent(paymentForm, 'submit');
+						setTimeout(function () {
+							paymentForm.submit();
 						}, 200);
 					}
 				} else {
@@ -1876,7 +1699,7 @@ function t_form_dict(msg) {
 		 * @param {string} systemName - str system name
 		 * @returns
 		 */
-		window.tildaForm.paysystemScriptLoad = function(linkScript, systemName) {
+		window.tildaForm.paysystemScriptLoad = function (linkScript, systemName) {
 			if (!systemName || !linkScript || linkScript.substring(0, 4) != 'http') {
 				console.log('Wrong script parameters.');
 				return false;
@@ -1905,8 +1728,7 @@ function t_form_dict(msg) {
 		 * @param {Object} objArgs - obj data for pay system
 		 * @returns {boolean} - return false
 		 */
-		window.tildaForm.paysystemRun = function(linkScript, systemName, form, functionCode, objArgs) {
-			// TODO: jq element falls in function
+		window.tildaForm.paysystemRun = function (linkScript, systemName, form, functionCode, objArgs) {
 			if (!(form instanceof Element)) form = form[0];
 
 			if (!window.scriptSysPayment) {
@@ -1915,7 +1737,7 @@ function t_form_dict(msg) {
 
 			if (!window.scriptSysPayment[systemName] || window.scriptSysPayment[systemName] !== true) {
 				window.tildaForm.paysystemScriptLoad(linkScript, systemName);
-				window.setTimeout(function() {
+				window.setTimeout(function () {
 					window.tildaForm.paysystemRun(linkScript, systemName, form, functionCode, objArgs);
 				}, 200);
 				return false;
@@ -1937,8 +1759,7 @@ function t_form_dict(msg) {
 		 * @param {Node} form - block form
 		 * @param {Object} objArgs - obj data
 		 */
-		window.tildaForm.paysystemSuccess = function(form, objArgs) {
-			// TODO: jq element falls in function
+		window.tildaForm.paysystemSuccess = function (form, objArgs) {
 			if (!(form instanceof Element)) form = form[0];
 
 			window.tildaForm.clearTCart(form);
@@ -1968,12 +1789,12 @@ function t_form_dict(msg) {
 				window.Tilda.sendEventToStatistics(linkPage, title, product, price);
 			}
 
-			if (window.tildaFormData[formId] && window.tildaFormData[formId]['form']) {
-				dataSuccessMessage = window.tildaFormData[formId]['form']['successMessage'];
+			if (form.tildaSuccessMessage) {
+				dataSuccessMessage = form.tildaSuccessMessage;
 			}
 
 			if (objArgs.successurl) {
-				window.setTimeout(function() {
+				window.setTimeout(function () {
 					window.location.href = objArgs.successurl;
 				}, 300);
 			}
@@ -1984,12 +1805,7 @@ function t_form_dict(msg) {
 				successBox.innerHTML = '';
 			}
 
-			window.tildaFormData[formId] = {
-				'form': {
-					'el': form,
-					'successMessage': ''
-				}
-			};
+			form.tildaSuccessMessage = '';
 
 			var dataSuccessCallback = form.getAttribute('data-success-callback');
 
@@ -2001,7 +1817,7 @@ function t_form_dict(msg) {
 		/**
 		 * Add stripe pay script
 		 */
-		window.tildaForm.stripeLoad = function() {
+		window.tildaForm.stripeLoad = function () {
 			if (window.stripeapiiscalled !== true) {
 				var script = document.createElement('script');
 				script.type = 'text/javascript';
@@ -2018,18 +1834,18 @@ function t_form_dict(msg) {
 		 * @param {Object} objArgs obj data
 		 * @returns {boolean} - return true/false
 		 */
-		window.tildaForm.stripePay = function(form, objArgs) {
-			// TODO: jq element falls in function
+		window.tildaForm.stripePay = function (form, objArgs) {
 			if (!(form instanceof Element)) form = form[0];
 
 			if (window.stripeapiiscalled !== true) {
 				window.tildaForm.stripeLoad();
-				window.setTimeout(function() {
+				window.setTimeout(function () {
 					window.tildaForm.stripePay(form, objArgs);
 				}, 200);
 				return false;
 			}
 
+			var allRecords = document.getElementById('allrecords');
 			var companyName = objArgs.companyname;
 			var companyLogo = objArgs.companylogo;
 
@@ -2039,7 +1855,7 @@ function t_form_dict(msg) {
 
 			if (!window.stripehandler) {
 				if (typeof window.StripeCheckout != 'object') {
-					window.setTimeout(function() {
+					window.setTimeout(function () {
 						window.tildaForm.stripePay(form, objArgs);
 					}, 200);
 					return false;
@@ -2066,7 +1882,7 @@ function t_form_dict(msg) {
 				window.stripehandler = window.StripeCheckout.configure(objStripeInit);
 
 				// close checkout on page navigation:
-				t_addEventListener(window, 'popstate', function() {
+				t_addEventListener(window, 'popstate', function () {
 					window.stripehandler.close();
 				});
 			}
@@ -2088,10 +1904,9 @@ function t_form_dict(msg) {
 				currency: objArgs.currency,
 				shippingAddress: objArgs.shipping == '1' ? true : false,
 				email: objArgs.email > '' ? objArgs.email : '',
-				token: function(token) {
+				token: function (token) {
 					if (token && token.id) {
-						var dataForm = [
-							{
+						var dataForm = [{
 								name: 'projectid',
 								value: objArgs.projectid
 							},
@@ -2124,7 +1939,7 @@ function t_form_dict(msg) {
 						xhr.open('POST', 'https://' + window.tildaForm.endpoint + '/payment/stripe/', true);
 						xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
 						xhr.setRequestHeader('Accept', 'application/json, text/javascript, */*; q=0.01');
-						xhr.onreadystatechange = function() {
+						xhr.onreadystatechange = function () {
 							if (xhr.readyState === 4) {
 								if (xhr.status >= 200 && xhr.status < 400) {
 									var data = xhr.responseText;
@@ -2155,12 +1970,12 @@ function t_form_dict(msg) {
 												window.Tilda.sendEventToStatistics(linkPage, title, product, price);
 											}
 
-											if (window.tildaFormData[formId] && window.tildaFormData[formId]['form']) {
-												dataSuccessMessage = window.tildaFormData[formId]['form']['successMessage'];
+											if (form.tildaSuccessMessage) {
+												dataSuccessMessage = form.tildaSuccessMessage;
 											}
 
 											if (objArgs.successurl) {
-												window.setTimeout(function() {
+												window.setTimeout(function () {
 													window.location.href = objArgs.successurl;
 												}, 300);
 											}
@@ -2171,12 +1986,7 @@ function t_form_dict(msg) {
 												successBox.innerHTML = '';
 											}
 
-											window.tildaFormData[formId] = {
-												'form': {
-													'el': form,
-													'successMessage': ''
-												}
-											};
+											form.tildaSuccessMessage = '';
 
 											var dataSuccessCallback = form.getAttribute('data-success-callback');
 
@@ -2197,11 +2007,12 @@ function t_form_dict(msg) {
 		/**
 		 * Add widget cloud payments to page (Payment system)
 		 */
-		window.tildaForm.cloudpaymentLoad = function() {
+		window.tildaForm.cloudpaymentLoad = function () {
 			if (window.cloudpaymentsapiiscalled !== true) {
 				var script = document.createElement('script');
 				script.type = 'text/javascript';
-				script.src = 'https://widget.cloudpayments.ru/bundles/cloudpayments';
+				/* script.src = 'https://widget.cloudpayments.ru/bundles/cloudpayments'; */
+                script.src = 'https://widget.cloudpayments.ru/bundles/cloudpayments.js';
 				document.body.appendChild(script);
 				window.cloudpaymentsapiiscalled = true;
 			}
@@ -2214,8 +2025,7 @@ function t_form_dict(msg) {
 		 * @param {Object} objArgs - obj data for widget
 		 * @returns {boolean} - return false
 		 */
-		window.tildaForm.cloudpaymentPay = function(form, objArgs) {
-			// TODO: jq element falls in function
+		window.tildaForm.cloudpaymentPay = function (form, objArgs) {
 			if (!(form instanceof Element)) form = form[0];
 
 			if (window.cloudpaymentsapiiscalled !== true) {
@@ -2248,12 +2058,14 @@ function t_form_dict(msg) {
 
 			if (!window.cloudpaymentshandler) {
 				if (typeof window.cp !== 'object') {
-					window.setTimeout(function() {
+					window.setTimeout(function () {
 						window.tildaForm.cloudpaymentPay(form, objArgs);
 					}, 200);
 					return false;
 				}
-				initCP = { language: language };
+				initCP = {
+					language: language
+				};
 				if (objArgs.applePaySupport && objArgs.applePaySupport === 'off') {
 					initCP.applePaySupport = false;
 				}
@@ -2271,15 +2083,16 @@ function t_form_dict(msg) {
 				objData.cloudPayments = objArgs.cloudPayments;
 			}
 
-			var popup = form.closest('.t-popup_show');
+			var oldStyle='', popup = form.closest('.t-popup_show');
 
 			if (!popup) {
 				popup = form.closest('.t706__cartwin_showed');
 			}
 
-			var oldStyle = popup.getAttribute('style');
-
-			popup.style.zIndex = 100;
+			if (popup) {
+				oldStyle = popup.getAttribute('style');
+				popup.style.zIndex = 100;
+			}
 			window.tildaForm.orderIdForStat = objArgs.invoiceId;
 
 			if (!objArgs.skin) {
@@ -2299,10 +2112,10 @@ function t_form_dict(msg) {
 					data: objData
 				},
 				// success
-				function(options) {
+				function (options) {
 					window.cloudpaymentshandler = false;
 
-					if (oldStyle) {
+					if (popup && oldStyle) {
 						popup.setAttribute('style', oldStyle);
 					}
 
@@ -2326,8 +2139,8 @@ function t_form_dict(msg) {
 						}, 300);
 					}
 
-					if (window.tildaFormData[formId] && window.tildaFormData[formId]['form']) {
-							dataSuccessMessage = window.tildaFormData[formId]['form']['successMessage'];
+					if (form.tildaSuccessMessage) {
+						dataSuccessMessage = form.tildaSuccessMessage;
 					}
 
 					if (dataSuccessMessage) {
@@ -2336,12 +2149,7 @@ function t_form_dict(msg) {
 						successBox.innerHTML = '';
 					}
 
-					window.tildaFormData[formId] = {
-						'form': {
-							'el': form,
-							'successMessage': ''
-						}
-					};
+					form.tildaSuccessMessage = '';
 
 					var dataSuccessCallback = form.getAttribute('data-success-callback');
 
@@ -2350,15 +2158,15 @@ function t_form_dict(msg) {
 					t_triggerEvent(form, 'tildaform:aftersuccess');
 				},
 				// fail
-				function(reason, options) {
-					if (oldStyle) {
+				function (reason, options) {
+					if (popup && oldStyle) {
 						popup.setAttribute('style', oldStyle);
 					}
 
 					successBox.style.display = 'none';
 
-					if (window.tildaFormData[formId] && window.tildaFormData[formId]['form']) {
-						dataSuccessMessage = window.tildaFormData[formId]['form']['successMessage'];
+					if (form.tildaSuccessMessage) {
+						dataSuccessMessage = form.tildaSuccessMessage;
 					}
 
 					if (dataSuccessMessage) {
@@ -2367,26 +2175,24 @@ function t_form_dict(msg) {
 						successBox.innerHTML = '';
 					}
 
-					window.tildaFormData[formId] = {
-						'form': {
-							'el': form,
-							'successMessage': ''
-						}
-					};
+					form.tildaSuccessMessage = '';
 
 					window.cloudpaymentshandler = false;
 
 					if (objArgs.failureurl) {
 						window.location.href = objArgs.failureurl;
 					} else {
-						var popupProducts = popup.querySelector('.t706__cartwin-products');
-						var popupWrapMount = popup.querySelector('.t706__cartwin-prodamount-wrap');
-						var popupBottomText = popup.querySelector('.t706__form-bottom-text');
-						var formInputsBox = form.querySelector('.t-form__inputsbox');
+						if (popup) {
+							var popupProducts = popup.querySelector('.t706__cartwin-products');
+							var popupWrapMount = popup.querySelector('.t706__cartwin-prodamount-wrap');
+							var popupBottomText = popup.querySelector('.t706__form-bottom-text');
 
-						if (popupProducts) popupProducts.style.display = 'block';
-						if (popupWrapMount) popupWrapMount.style.display = 'block';
-						if (popupBottomText) popupBottomText.style.display = 'block';
+							if (popupProducts) popupProducts.style.display = 'block';
+							if (popupWrapMount) popupWrapMount.style.display = 'block';
+							if (popupBottomText) popupBottomText.style.display = 'block';
+						}
+
+						var formInputsBox = form.querySelector('.t-form__inputsbox');
 						if (formInputsBox) formInputsBox.style.display = 'block';
 
 						try {
@@ -2408,8 +2214,7 @@ function t_form_dict(msg) {
 		 * @param {Object} objArgs - obj data
 		 * @param {boolean} sendStat - flag true/false
 		 */
-		window.tildaForm.sendStatAndShowMessage = function(form, objArgs, sendStat) {
-			// TODO: jq element falls in function
+		window.tildaForm.sendStatAndShowMessage = function (form, objArgs, sendStat) {
 			if (!(form instanceof Element)) form = form[0];
 
 			var allRecords = document.getElementById('allrecords');
@@ -2451,8 +2256,8 @@ function t_form_dict(msg) {
 				if (objArgs.successmessage) {
 					successBox.innerHTML = objArgs.successmessage;
 				} else {
-					if (window.tildaFormData[formId] && window.tildaFormData[formId]['form']) {
-						dataSuccessMessage = window.tildaFormData[formId]['form']['successMessage'];
+					if (form.tildaSuccessMessage) {
+						dataSuccessMessage = form.tildaSuccessMessage;
 					}
 
 					if (dataSuccessMessage) {
@@ -2466,12 +2271,7 @@ function t_form_dict(msg) {
 					}
 				}
 
-				window.tildaFormData[formId] = {
-					'form': {
-						'el': form,
-						'successMessage': ''
-					}
-				};
+				form.tildaSuccessMessage = '';
 
 				if (dataSuccessPopup === 'y') {
 					var successBoxText = successBox.textContent || successBox.innerText;
@@ -2485,19 +2285,21 @@ function t_form_dict(msg) {
 			window.tildaForm.clearTCart(form);
 
 			if (objArgs.successurl) {
-				window.setTimeout(function() {
+				window.setTimeout(function () {
 					window.location.href = objArgs.successurl;
 				}, 300);
 			}
 
 			var successCallback = form.getAttribute('data-success-callback');
 
-			// TODO: Can functions be brought into a global object so that they are not run through eval?
+			// TODO: Может функции занести в глобальный объект, чтобы их не запускать через eval?
 			// TODO: Fn in view string accept jq element
 			if (successCallback && successCallback === 't396_onSuccess' && typeof window['t396_onSuccess'] === 'function') {
 				eval(successCallback + '($(form))');
-			} else if (successCallback && successCallback !== 't396_onSuccess') {
+			} else if (successCallback && successCallback !== 't396_onSuccess' && typeof jQuery === 'function') {
 				eval(successCallback + '($(form))');
+			} else if (successCallback && successCallback !== 't396_onSuccess') {
+				eval(successCallback + '(form)');
 			}
 
 			var upwidgetRemoveBtns = form.querySelectorAll('.t-upwidget-container__data_table_actions_remove svg');
@@ -2525,16 +2327,13 @@ function t_form_dict(msg) {
 			}
 
 			// TODO: jq data
-			$(form).data('tildaformresult', { tranId: '0', orderId: '0' });
-			window.tildaFormData[formId] = {
-				'form': {
-					'el': form,
-					'tildaFormResult': {
-						'tranId': '0',
-						'orderId': '0'
-					}
-				}
-			};
+			$(form).data('tildaformresult', {
+				tranId: '0',
+				orderId: '0'
+			});
+
+			form.tildaTranId = '0';
+			form.tildaOrderId = '0';
 
 			t_triggerEvent(form, 'tildaform:aftersuccess');
 		};
@@ -2545,8 +2344,7 @@ function t_form_dict(msg) {
 		 * @param {Node} form block form
 		 * @param {Object} objArgs - obj data
 		 */
-		window.tildaForm.banktransferPay = function(form, objArgs) {
-			// TODO: jq element falls in function
+		window.tildaForm.banktransferPay = function (form, objArgs) {
 			if (!(form instanceof Element)) form = form[0];
 
 			if (objArgs && objArgs.condition === 'fast') {
@@ -2637,7 +2435,7 @@ function t_form_dict(msg) {
 
 						xhr.open('POST', 'https://' + window.tildaForm.endpoint + '/payment/banktransfer/', true);
 						xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
-						xhr.onreadystatechange = function() {
+						xhr.onreadystatechange = function () {
 							if (xhr.readyState === 4) {
 								if (xhr.status >= 200 && xhr.status < 400) {
 									var data = xhr.responseText;
@@ -2651,7 +2449,9 @@ function t_form_dict(msg) {
 											}
 
 											if (!objData) {
-												objData = { error: 'Unknown error. Please reload page and try again later.' };
+												objData = {
+													error: 'Unknown error. Please reload page and try again later.'
+												};
 											}
 											if (objData && objData.error) {
 												alert(objData.error);
@@ -2688,7 +2488,7 @@ function t_form_dict(msg) {
 		/**
 		 * Close success popup for ZB
 		 */
-		window.tildaForm.closeSuccessPopup = function() {
+		window.tildaForm.closeSuccessPopup = function () {
 			var successPopup = document.getElementById('tildaformsuccesspopup');
 			if (successPopup) {
 				t_removeClass(document.body, 't-body_success-popup-showed');
@@ -2704,7 +2504,7 @@ function t_form_dict(msg) {
 		/**
 		 * Locked scroll document for iPhone/iPad/iPod
 		 */
-		window.tildaForm.lockBodyScroll = function() {
+		window.tildaForm.lockBodyScroll = function () {
 			var documentBody = document.body;
 
 			if (!t_hasClass(documentBody, 't-body_scroll-locked')) {
@@ -2734,7 +2534,7 @@ function t_form_dict(msg) {
 		 *
 		 * @param {string} message - str message
 		 */
-		window.tildaForm.showSuccessPopup = function(message) {
+		window.tildaForm.showSuccessPopup = function (message) {
 			var strHtml = '';
 			var successPopup = document.getElementById('tildaformsuccesspopup');
 			var successPopupText = document.getElementById('tildaformsuccesspopuptext');
@@ -2749,7 +2549,7 @@ function t_form_dict(msg) {
 				successPopupText = document.getElementById('tildaformsuccesspopuptext');
 				var successPopupCloseBtn = successPopup.querySelector('.t-form-success-popup__close-icon');
 
-				t_addEventListener(successPopup, 'click', function(event) {
+				t_addEventListener(successPopup, 'click', function (event) {
 					event = event || window.event;
 					var target = event.target || event.srcElement;
 
@@ -2758,11 +2558,11 @@ function t_form_dict(msg) {
 					}
 				});
 
-				t_addEventListener(successPopupCloseBtn, 'click', function() {
+				t_addEventListener(successPopupCloseBtn, 'click', function () {
 					window.tildaForm.closeSuccessPopup();
 				});
 
-				t_addEventListener(documentBody, 'keydown', function(event) {
+				t_addEventListener(documentBody, 'keydown', function (event) {
 					event = event || window.event;
 					var keyCode = event.keyCode || event.which;
 
@@ -2791,11 +2591,9 @@ function t_form_dict(msg) {
 		 * @param {string} successUrl - link on successful submission
 		 * @param {string} successCallback - function on successful submission
 		 */
-		window.tildaForm.successEnd = function(form, successUrl, successCallback) {
-			// TODO: jq element falls in function
+		window.tildaForm.successEnd = function (form, successUrl, successCallback) {
 			if (!(form instanceof Element)) form = form[0];
 
-			var formId = form.getAttribute('id');
 			var successBox = form.querySelector('.js-successbox');
 			var successStr = t_form_dict('success');
 
@@ -2819,8 +2617,10 @@ function t_form_dict(msg) {
 			// TODO: Fn in view string accept jq element
 			if (successCallback && successCallback === 't396_onSuccess' && typeof window['t396_onSuccess'] === 'function') {
 				eval(successCallback + '($(form))');
-			} else if (successCallback && successCallback !== 't396_onSuccess') {
+			} else if (successCallback && successCallback !== 't396_onSuccess' && typeof jQuery === 'function') {
 				eval(successCallback + '($(form))');
+			} else if (successCallback && successCallback !== 't396_onSuccess') {
+				eval(successCallback + '(form)');
 			} else {
 				if (successUrl) {
 					setTimeout(function () {
@@ -2856,16 +2656,13 @@ function t_form_dict(msg) {
 			}
 
 			// TODO: jq data
-			$(form).data('tildaformresult', { tranId: '0', orderId: '0' });
-			window.tildaFormData[formId] = {
-				'form': {
-					'el': form,
-					'tildaFormResult': {
-						'tranId': '0',
-						'orderId': '0'
-					}
-				}
-			};
+			$(form).data('tildaformresult', {
+				tranId: '0',
+				orderId: '0'
+			});
+
+			form.tildaTranId = '0';
+			form.tildaOrderId = '0';
 		};
 
 		/**
@@ -2877,8 +2674,7 @@ function t_form_dict(msg) {
 		 * @param {string} formKey - key form
 		 * @returns {undefined} - exit function
 		 */
-		window.tildaForm.send = function(form, btnSubmit, formType, formKey) {
-			// TODO: jq element falls in function
+		window.tildaForm.send = function (form, btnSubmit, formType, formKey) {
 			if (!(form instanceof Element)) form = form[0];
 			if (!(btnSubmit instanceof Element)) btnSubmit = btnSubmit[0];
 
@@ -2898,8 +2694,14 @@ function t_form_dict(msg) {
 				if (window.mauser) {
 					window.tildaForm.addMebersInfoToForm(form);
 				}
-			} catch(e) {
+			} catch (e) {
 				/* */
+			}
+
+			var inputItsGood = form.querySelector('input[name="form-spec-comments"]');
+
+			if (!inputItsGood) {
+				form.insertAdjacentHTML('beforeend', '<div style="position: absolute; left: -5000px; bottom: 0; display: none;"><input type="text" name="form-spec-comments" value="Its good" class="js-form-spec-comments" tabindex="-1" /></div>');
 			}
 
 			if (formType === 2 || (!formType && formKey)) {
@@ -2990,11 +2792,29 @@ function t_form_dict(msg) {
 				}
 				if (hiddenInputs.length > 0) {
 					for (var i = 0; i < hiddenInputs.length; i++) {
-						hiddenInputs[i].value = window.browserLang;
+						hiddenInputs[i].value = window.t_form__browserLang;
 					}
 				}
 
-				var inputItsGood = form.querySelector('.js-form-spec-comments');
+				/* TODO: form master. Need check */
+				try {
+					hiddenInputs = form.querySelector('input[name=tildaspec-fp]');
+					if (!hiddenInputs) {
+						form.insertAdjacentHTML('beforeend', '<input type="hidden" name="tildaspec-fp" value="">');
+						hiddenInputs = form.querySelector('input[name=tildaspec-fp]');
+					}
+					if (hiddenInputs) {
+						if (window.tildastat) {
+							hiddenInputs.value = window.tildastat('fingerprint');
+						} else {
+							hiddenInputs.value = 'st' + window.pageYOffset + 'w' + window.innerWidth + 'h' + window.innerHeight + 'ft' + form.getBoundingClientRect().top + window.pageYOffset;
+						}
+					}
+				} catch (e) {
+					/* */
+				}
+
+				inputItsGood = form.querySelector('.js-form-spec-comments');
 
 				if (inputItsGood) {
 					inputItsGood.value = '';
@@ -3015,7 +2835,10 @@ function t_form_dict(msg) {
 				dataForm = arrFilter;
 
 				if (window.tildaForm.tildapayment && window.tildaForm.tildapayment.products) {
-					dataForm.push({ name: 'tildapayment', value: JSON.stringify(window.tildaForm.tildapayment) });
+					dataForm.push({
+						name: 'tildapayment',
+						value: JSON.stringify(window.tildaForm.tildapayment)
+					});
 				} else {
 					if (form.closest('.t706__orderform')) {
 						return false;
@@ -3023,7 +2846,10 @@ function t_form_dict(msg) {
 				}
 
 				if (window.tildaForm.tildamember && window.tildaForm.tildamember.code) {
-					dataForm.push({ name: 'tildamember', value: JSON.stringify(window.tildaForm.tildamember) });
+					dataForm.push({
+						name: 'tildamember',
+						value: JSON.stringify(window.tildaForm.tildamember)
+					});
 				}
 
 				dataForm = t_formData(dataForm);
@@ -3050,17 +2876,7 @@ function t_form_dict(msg) {
 
 									t_removeClass(btnSubmit, 't-btn_sending');
 
-									// TODO: jq data
-									$(btnSubmit).data('form-sending-status', '0');
-									$(btnSubmit).data('submitform', '');
-
-									window.tildaFormData[formId] = {
-										'btnSubmit': {
-											'el': btnSubmit,
-											'formSendingStatus': 0,
-											'submitForm': ''
-										}
-									};
+									btnSubmit.tildaSendingStatus = '0';
 
 									if (objData && objData.error) {
 										dataSuccessUrl = '';
@@ -3123,25 +2939,21 @@ function t_form_dict(msg) {
 										// TODO: jq data
 										$(form).data('tildaformresult', formResult);
 
-										window.tildaFormData[formId] = {
-											'form': {
-												'el': form,
-												'tildaFormResult': formResult
-											}
-										};
+										form.tildaTranId = formResult.tranId;
+										form.tildaOrderId = formResult.orderId;
 
 										var dataEventName = form.getAttribute('data-tilda-event-name') || '';
 
 										if (!dataEventName) {
 											if (dataFormCart === 'y' && objData && (
-												(objData.next && objData.next.type &&
-													(objData.next.type != 'function' ||
-														(objData.next.value &&
-															(objData.next.value.sysname == 'stripev3' ||
-															objData.next.value.installation == 'outersite')
+													(objData.next && objData.next.type &&
+														(objData.next.type != 'function' ||
+															(objData.next.value &&
+																(objData.next.value.sysname == 'stripev3' ||
+																	objData.next.value.installation == 'outersite')
+															)
 														)
-													)
-												) || !objData.next)) {
+													) || !objData.next)) {
 												dataEventName = '/tilda/' + formId + '/payment/';
 											} else {
 												dataEventName = '/tilda/' + formId + '/submitted/';
@@ -3171,39 +2983,52 @@ function t_form_dict(msg) {
 
 											try {
 												window.Tilda.sendEventToStatistics(dataEventName, title, product, price);
-											} catch(e) {
+											} catch (e) {
 												console.log(e);
 											}
 
 											if (window.dataLayer) {
-												window.dataLayer.push({ 'event': 'submit_' + formId });
+												window.dataLayer.push({
+													'event': 'submit_' + formId
+												});
 											}
 										} else {
 											try {
 												/* eslint no-undef: */
 												if (ga && window.mainTracker != 'tilda') {
-													ga('send', { 'hitType': 'pageview', 'page': dataEventName, 'title': title });
+													ga('send', {
+														'hitType': 'pageview',
+														'page': dataEventName,
+														'title': title
+													});
 												}
 
 												if (window.mainMetrika && window[window.mainMetrika]) {
-													window[window.mainMetrika].hit(dataEventName, { title: title, referer: window.location.href });
+													window[window.mainMetrika].hit(dataEventName, {
+														title: title,
+														referer: window.location.href
+													});
 												}
-											} catch(e) {
+											} catch (e) {
 												console.log(e);
 											}
 
 											if (window.dataLayer) {
-												window.dataLayer.push({ 'event': 'submit_' + formId });
+												window.dataLayer.push({
+													'event': 'submit_' + formId
+												});
 											}
 										}
 
 										try {
 											t_triggerEvent(form, 'tildaform:aftersuccess');
 
-											if (dataFormSendedCallback) {
+											if (dataFormSendedCallback && typeof jQuery === 'function') {
 												eval(dataFormSendedCallback + '($(form));');
+											} else if (dataFormSendedCallback) {
+												eval(dataFormSendedCallback + '(form);');
 											}
-										} catch(e) {
+										} catch (e) {
 											console.log(e);
 										}
 
@@ -3224,17 +3049,7 @@ function t_form_dict(msg) {
 
 							t_removeClass(btnSubmit);
 
-							// TODO: jq data
-							$(btnSubmit).data('form-sending-status', '0');
-							$(btnSubmit).data('submitform', '');
-
-							window.tildaFormData[formId] = {
-								'btnSubmit': {
-									'el': btnSubmit,
-									'formSendingStatus': 0,
-									'submitForm': ''
-								}
-							};
+							btnSubmit.tildaSendingStatus = '0';
 
 							var errorBoxs = form.querySelectorAll('.js-errorbox-all');
 							if (!errorBoxs || errorBoxs.length === 0) {
@@ -3252,12 +3067,12 @@ function t_form_dict(msg) {
 
 							if (!xhr || (xhr.status == 0 && tsDelta < 100)) {
 								for (var i = 0; i < allError.length; i++) {
-									allError[i].innerHTML = 'Request error (opening block content panel). Please check internet connection...';
+									allError[i].innerHTML = 'Request error (sending form data). Please check internet connection...';
 								}
 							} else {
 								if (
 									xhr &&
-									(xhr.status >= 500 || xhr.status == 408 || xhr.status == 410 || xhr.status == 429 || xhr.statusText == 'timeout') &&
+									(xhr.status >= 500 || xhr.status == 408 || xhr.status == 410 || xhr.status == 429 || xhr.statusText == 'timeout' /* Похоже 'timeout' отсутствует https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/statusText */) &&
 									window.tildaForm.endpoint.indexOf('forms.tilda') !== -1
 								) {
 									window.tildaForm.endpoint = 'forms2.tildacdn.com';
@@ -3271,11 +3086,11 @@ function t_form_dict(msg) {
 									} else {
 										if (xhr && xhr.statusText) {
 											for (var i = 0; i < allError.length; i++) {
-												allError[i].innerHTML = 'Error [' + xhr.status + ', '+ xhr.statusText + ']. Please, try again later.';
+												allError[i].innerHTML = 'Error [' + xhr.status + ', ' + xhr.statusText + ']. Please, try again later.';
 											}
 										} else {
 											for (var i = 0; i < allError.length; i++) {
-												allError[i].innerHTML = '[' + xhr.status + '] '+ 'Unknown error. Please, try again later.';
+												allError[i].innerHTML = '[' + xhr.status + '] ' + 'Unknown error. Please, try again later.';
 											}
 										}
 									}
@@ -3306,7 +3121,10 @@ function t_form_dict(msg) {
 					dataForm = t_serializeArray(form);
 
 					if (window.tildaForm.tildapayment && window.tildaForm.tildapayment.amount) {
-						dataForm.push({ name: 'tildapayment', value: JSON.stringify(window.tildaForm.tildapayment) });
+						dataForm.push({
+							name: 'tildapayment',
+							value: JSON.stringify(window.tildaForm.tildapayment)
+						});
 					}
 
 					dataForm = t_formData(dataForm);
@@ -3325,23 +3143,14 @@ function t_form_dict(msg) {
 
 								t_removeClass(btnSubmit, 't-btn_sending');
 
-								// TODO: jq data
-								$(btnSubmit).data('form-sending-status', '0');
-								$(btnSubmit).data('submitform', '');
-
-								window.tildaFormData[formId] = {
-									'btnSubmit': {
-										'el': btnSubmit,
-										'formSendingStatus': 0,
-										'submitForm': ''
-									}
-								};
+								btnSubmit.tildaSendingStatus = '0';
 
 								var data = xhr.responseText;
 
 								if (data) {
 									if (data.substring(0, 1) == '{') {
 										var objData = JSON.parse(data);
+
 										if (typeof objData === 'object') {
 											if (objData && objData.message) {
 												if (objData.message !== 'OK') {
@@ -3381,6 +3190,7 @@ function t_form_dict(msg) {
 										}
 									} else {
 										successBox.innerHTML = data;
+										t_parseScripts(successBox, '');
 									}
 								}
 								var linkPage = '/tilda/' + formId + '/submitted/';
@@ -3391,12 +3201,19 @@ function t_form_dict(msg) {
 								} else {
 									if (typeof ga !== 'undefined') {
 										if (window.mainTracker != 'tilda') {
-											ga('send', { 'hitType': 'pageview', 'page': linkPage, 'title': title });
+											ga('send', {
+												'hitType': 'pageview',
+												'page': linkPage,
+												'title': title
+											});
 										}
 									}
 
 									if (window.mainMetrika > '' && window[window.mainMetrika]) {
-										window[window.mainMetrika].hit(linkPage, { title: title, referer: window.location.href });
+										window[window.mainMetrika].hit(linkPage, {
+											title: title,
+											referer: window.location.href
+										});
 									}
 								}
 								t_triggerEvent(form, 'tildaform:aftersuccess');
@@ -3405,17 +3222,7 @@ function t_form_dict(msg) {
 							} else {
 								t_removeClass(btnSubmit, 't-btn_sending');
 
-								// TODO: jq data
-								$(btnSubmit).data('form-sending-status', '0');
-								$(btnSubmit).data('submitform', '');
-
-								window.tildaFormData[formId] = {
-									'btnSubmit': {
-										'el': btnSubmit,
-										'formSendingStatus': 0,
-										'submitForm': ''
-									}
-								};
+								btnSubmit.tildaSendingStatus = '0';
 
 								var errorBoxs = form.querySelectorAll('.js-errorbox-all');
 								if (!errorBoxs || errorBoxs.length === 0) {
@@ -3471,15 +3278,7 @@ function t_form_dict(msg) {
 					if (action.indexOf(window.tildaForm.endpoint) == -1) {
 						t_removeClass(btnSubmit, 't-btn_sending');
 
-						// TODO: jq data
-						$(btnSubmit).data('form-sending-status', '3');
-
-						window.tildaFormData[formId] = {
-							'btnSubmit': {
-								'el': btnSubmit,
-								'formSendingStatus': 3
-							}
-						};
+						btnSubmit.tildaSendingStatus = '3';
 
 						form.submit();
 
@@ -3505,9 +3304,13 @@ function t_form_dict(msg) {
 
 					if (window.tildaForm.isRecaptchaScriptInit === false) {
 						var documentHead = document.head;
-						window.tildaForm.isRecaptchaScriptInit = true;
+						var script = document.createElement('script');
 
-						documentHead.insertAdjacentHTML('beforeend', '<script src="https://www.google.com/recaptcha/api.js?render=explicit"' + ' async defer><' + '/script>');
+						window.tildaForm.isRecaptchaScriptInit = true;
+						script.type = 'text/javascript';
+						script.src = 'https://www.google.com/recaptcha/api.js?render=explicit';
+						script.async = true;
+						documentHead.appendChild(script);
 						documentHead.insertAdjacentHTML('beforeend', '<style type="text/css">.js-send-form-success .grecaptcha-badge {display: none;}</style>');
 					}
 
@@ -3529,7 +3332,7 @@ function t_form_dict(msg) {
 			if (window.isInitEventsCustomMask !== true) {
 				var script = document.createElement('script');
 				script.type = 'text/javascript';
-				script.src = 'https://static.tildacdn.com/js/tilda-custom-mask-1.0.min.js';
+				script.src = 'https://static.tildacdn.com/js/tilda-forms-custommask-1.0.beta.min.js';
 				document.head.appendChild(script);
 				window.isInitEventsCustomMask = true;
 			}
@@ -3538,7 +3341,7 @@ function t_form_dict(msg) {
 		/**
 		 * Init custom mask
 		 */
-		window.tildaForm_initMasks = function () {
+		window.tildaForm_initMasks = function() {
 			var inputsCustomMask = document.querySelectorAll('.js-tilda-mask');
 
 			if (inputsCustomMask.length > 0) {
@@ -3546,26 +3349,35 @@ function t_form_dict(msg) {
 					window.tildaForm_customMasksLoad();
 					window.setTimeout(function() {
 						window.tildaForm_initMasks();
-					}, 1000);
+					}, 100);
 					return;
 				}
 			}
 
 			if (window.isInitEventsCustomMask === true) {
 				for (var i = 0; i < inputsCustomMask.length; i++) {
-					var input = inputsCustomMask[i];
-					var dataMask = input.getAttribute('data-tilda-mask');
-					var dataPlaceholder = input.getAttribute('data-tilda-mask-holder');
-					var dataInit = input.getAttribute('data-tilda-mask-init');
+					t_asyncLoad(inputsCustomMask[i]);
+				}
+			}
 
-					if (dataMask && !dataInit) {
-						if (dataPlaceholder) {
-							t_customMask__mask(input, dataMask, { placeholder: dataPlaceholder });
-						} else {
+			function t_asyncLoad(input) {
+				var dataMask = input.getAttribute('data-tilda-mask');
+				var dataPlaceholder = input.getAttribute('data-tilda-mask-holder');
+				var dataInit = input.getAttribute('data-tilda-mask-init');
+
+				if (dataMask && !dataInit) {
+					if (dataPlaceholder) {
+						t_onFuncLoad('t_customMask__mask', function() {
+							t_customMask__mask(input, dataMask, {
+								placeholder: dataPlaceholder
+							});
+						});
+					} else {
+						t_onFuncLoad('t_customMask__mask', function() {
 							t_customMask__mask(input, dataMask);
-						}
-						input.setAttribute('data-tilda-mask-init', '1');
+						});
 					}
+					input.setAttribute('data-tilda-mask-init', '1');
 				}
 			}
 		};
@@ -3579,12 +3391,19 @@ function t_form_dict(msg) {
 			var recBlocks = document.querySelectorAll('.r');
 
 			for (var i = 0; i < recBlocks.length; i++) {
-				t_forms__initEventPlaceholder(recBlocks[i]);
-				t_forms__addInputItsGood(recBlocks[i]);
-				t_forms__addAttrAction(recBlocks[i]);
-				t_forms__onSubmit(recBlocks[i]);
-				t_forms__onClick(recBlocks[i]);
-				t_forms__onRender(recBlocks[i]);
+				var rec = recBlocks[i];
+				var recId = rec.id;
+
+				if (!window.initForms[recId]) {
+					t_forms__initEventPlaceholder(recBlocks[i]);
+					t_forms__addInputItsGood(recBlocks[i]);
+					t_forms__addAttrAction(recBlocks[i]);
+					t_forms__onSubmit(recBlocks[i]);
+					t_forms__onClick(recBlocks[i]);
+					t_forms__onRender(recBlocks[i]);
+
+					window.initForms[recId] = true;
+				}
 			}
 		}
 		t_forms__initForms();
@@ -3680,13 +3499,16 @@ function t_form_dict(msg) {
 		 *
 		 * @param {Node} rec - rec block
 		 */
-		function t_forms__addInputItsGood(rec) {
+		 function t_forms__addInputItsGood(rec) {
 			var allForms = rec.querySelectorAll('.js-form-proccess[data-formactiontype]');
 
-			for(var i = 0; i < allForms.length; i++) {
-				var formActionType = allForms[i].getAttribute('data-formactiontype');
-				if (formActionType !== '1') {
-					allForms[i].insertAdjacentHTML('beforeend', '<div style="position: absolute; left: -5000px; bottom:0;"><input type="text" name="form-spec-comments" value="Its good" class="js-form-spec-comments" tabindex="-1" /></div>');
+			for (var i = 0; i < allForms.length; i++) {
+				var form = allForms[i];
+				var formActionType = form.getAttribute('data-formactiontype');
+				var inputItsGood = form.querySelector('input[name="form-spec-comments"]');
+
+				if (formActionType !== '1' && !inputItsGood) {
+					form.insertAdjacentHTML('beforeend', '<div style="position: absolute; left: -5000px; bottom: 0; display: none;"><input type="text" name="form-spec-comments" value="Its good" class="js-form-spec-comments" tabindex="-1" /></div>');
 				}
 			}
 		}
@@ -3707,11 +3529,12 @@ function t_form_dict(msg) {
 			// TODO: procces or proccess?
 			var allForms = rec.querySelectorAll('.js-form-procces');
 
-			for(var i = 0; i < allForms.length; i++) {
-				var formType = allForms[i].getAttribute('data-formactiontype');
+			for (var i = 0; i < allForms.length; i++) {
+				var form = allForms[i];
+				var formType = form.getAttribute('data-formactiontype');
 
 				if (formType === '2') {
-					allForms[i].setAttribute('action', '#');
+					form.setAttribute('action', '#');
 				}
 			}
 		}
@@ -3745,7 +3568,7 @@ function t_form_dict(msg) {
 		 * @param {Node} rec - rec block
 		 */
 		function t_forms__onSubmit(rec) {
-			var forms = rec.querySelectorAll('form');
+			var forms = rec.querySelectorAll('.js-form-proccess');
 
 			for (var i = 0; i < forms.length; i++) {
 				t_removeEventListener(forms[i], 'submit', t_forms__submitEvent);
@@ -3756,39 +3579,31 @@ function t_form_dict(msg) {
 		/**
 		 * Submit event for form
 		 */
-		function t_forms__submitEvent() {
-			var form = this;
+		function t_forms__submitEvent(event) {
+			var form = event;
 
+			if (event.target) form = event.target;
 			if (!form) return;
 
-			var formId = form.getAttribute('id');
 			var btnSubmit = form.querySelector('[type="submit"]');
 			var btnStatus = '';
 
-			// TODO: jq data
-			btnStatus = $(btnSubmit).data('form-sending-status');
-
-			if (window.tildaFormData[formId] && window.tildaFormData[formId]['btnSubmit']) {
-				btnStatus = window.tildaFormData[formId]['btnSubmit']['formSendingStatus'];
+			if (btnSubmit && btnSubmit.tildaSendingStatus) {
+				btnStatus = btnSubmit.tildaSendingStatus;
 			}
 
-			if (btnStatus && btnStatus === 3) {
-				$(btnSubmit).data('form-sending-status', '');
-
-				window.tildaFormData[formId] = {
-					'btnSubmit': {
-						'el': btnSubmit,
-						'formSendingStatus': ''
-					}
-				};
-
-				return true;
+			if (btnStatus && btnStatus === '3') {
+				btnSubmit.tildaSendingStatus = '';
 			} else {
-				if (!t_hasClass(btnSubmit, 't706__submit_disable')) {
+				if (btnSubmit && !t_hasClass(btnSubmit, 't706__submit_disable')) {
 					btnSubmit.click();
 				}
 
-				return false;
+				if (event.preventDefault) {
+					event.preventDefault()
+				} else if (event.returnValue) {
+					event.returnValue = false
+				}
 			}
 		}
 
@@ -3801,178 +3616,145 @@ function t_form_dict(msg) {
 			t_addEventListener(rec, 'dblclick', t_forms__initBtnDblClick);
 			t_removeEventListener(rec, 'click', t_forms__initBtnClick);
 			t_addEventListener(rec, 'click', t_forms__initBtnClick);
+		}
 
-			/**
-			 * Init click for button submit
-			 *
-			 * @param {MouseEvent} event - event
-			 * @returns
-			 */
-			function t_forms__initBtnClick(event) {
-				event = event || window.event;
-				var target = event.target || event.srcElement;
-				var btnSubmit = target.closest('[type="submit"]') ? target : false;
+		/**
+		 * Init click for button submit
+		 *
+		 * @param {MouseEvent} event - event
+		 * @returns
+		 */
+		function t_forms__initBtnClick(event) {
+			event = event || window.event;
+			var target = event.target || event.srcElement;
+			var btnSubmit = target.closest('[type="submit"]') ? target : false;
 
-				if (!btnSubmit) return;
+			if (!btnSubmit) return;
 
-				event.preventDefault ? event.preventDefault() : (event.returnValue = false);
+			var form = btnSubmit.closest('.js-form-proccess');
 
-				var form = btnSubmit.closest('form');
+			if (!form) return;
 
-				if (!form) return false;
+			event.preventDefault ? event.preventDefault() : (event.returnValue = false);
 
-				var formId = form.getAttribute('id');
-				var arrErrors = [];
-				var btnStatus = '';
+			var formId = form.getAttribute('id');
+			var arrErrors = [];
+			var btnStatus = '';
 
-				if (window.tildaFormData[formId] && window.tildaFormData[formId]['btnSubmit']) {
-					btnStatus = window.tildaFormData[formId]['btnSubmit']['formSendingStatus'];
-				}
+			if (btnSubmit.tildaSendingStatus) {
+				btnStatus = btnSubmit.tildaSendingStatus;
+			}
 
-				// 0 - I can send, 1 - I send as soon as sent, set again to 0
-				if (btnStatus && btnStatus >= 1) {
-					return false;
-				}
+			// 0 - I can send, 1 - I send as soon as sent, set again to 0
+			if (btnStatus && btnStatus >= 1) return;
 
-				if (t_hasClass(btnSubmit, 't706__submit_disable')) {
-					return false;
-				}
+			if (t_hasClass(btnSubmit, 't706__submit_disable')) return;
 
-				// TODO: jq data
-				$(btnSubmit).data('form-sending-status', '1');
-				$(btnSubmit).data('submitform', form);
+			t_addClass(btnSubmit, 't-btn_sending');
 
-				t_addClass(btnSubmit, 't-btn_sending');
-				window.tildaFormData[formId] = {
-					'btnSubmit': {
-						'el': btnSubmit,
-						'formSendingStatus': 1,
-						'submitForm': form
+			btnSubmit.tildaSendingStatus = '1';
+
+			window.tildaForm.hideErrors(form);
+			arrErrors = window.tildaForm.validate(form);
+
+			if (window.tildaForm.showErrors(form, arrErrors)) {
+				t_removeClass(btnSubmit, 't-btn_sending');
+
+				btnSubmit.tildaSendingStatus = '0';
+
+				return;
+			} else {
+				var allRecords = document.getElementById('allrecords');
+				var formKey = allRecords.getAttribute('data-tilda-formskey');
+				var formType = parseInt(form.getAttribute('data-formactiontype'));
+				var inputsServices = form.querySelectorAll('.js-formaction-services');
+
+				if (inputsServices.length === 0 && formType !== 1 && !formKey) {
+					var errorBoxs = form.querySelectorAll('.js-errorbox-all');
+					if (!errorBoxs || errorBoxs.length === 0) {
+						form.insertAdjacentHTML('afterbegin', '<div class="js-errorbox-all"></div>');
+						errorBoxs.querySelectorAll('.js-errorbox-all');
 					}
-				};
 
-				window.tildaForm.hideErrors(form);
-				arrErrors = window.tildaForm.validate(form);
-
-				if (window.tildaForm.showErrors(form, arrErrors)) {
-					t_removeClass(btnSubmit, 't-btn_sending');
-					// TODO: jq data
-					$(btnSubmit).data('form-sending-status', '0');
-					$(btnSubmit).data('submitform', '');
-
-					window.tildaFormData[formId] = {
-						'btnSubmit': {
-							'el': btnSubmit,
-							'formSendingStatus': 0,
-							'submitForm': ''
-						}
-					};
-					return false;
-				} else {
-					var allRecords = document.getElementById('allrecords');
-					var formKey = allRecords.getAttribute('data-tilda-formskey');
-					var formType = parseInt(form.getAttribute('data-formactiontype'));
-					var inputsServices = form.querySelectorAll('.js-formaction-services');
-
-					if (inputsServices.length === 0 && formType !== 1 && !formKey) {
-						var errorBoxs = form.querySelectorAll('.js-errorbox-all');
-						if (!errorBoxs || errorBoxs.length === 0) {
-							form.insertAdjacentHTML('afterbegin', '<div class="js-errorbox-all"></div>');
-							errorBoxs.querySelectorAll('.js-errorbox-all');
-						}
-
-						var allError = form.querySelectorAll('.js-errorbox-all .js-rule-error-all');
-						if (!allError || allError.length === 0) {
-							for (var i = 0; i < errorBoxs.length; i++) {
-								errorBoxs[i].insertAdjacentHTML('beforeend', '<p class="js-rule-error-all"></p>');
-							}
-							allError = form.querySelectorAll('.js-errorbox-all .js-rule-error-all');
-						}
-
-						for (var i = 0; i < allError.length; i++) {
-							allError[i].innerHTML = 'Please set receiver in block with forms';
-							allError[i].style.display = 'block';
-						}
-
+					var allError = form.querySelectorAll('.js-errorbox-all .js-rule-error-all');
+					if (!allError || allError.length === 0) {
 						for (var i = 0; i < errorBoxs.length; i++) {
-							errorBoxs[i].style.display = 'block';
+							errorBoxs[i].insertAdjacentHTML('beforeend', '<p class="js-rule-error-all"></p>');
 						}
-
-						t_addClass(form, 'js-send-form-error');
-						t_removeClass(btnSubmit, 't-btn_sending');
-						window.tildaFormData[formId] = {
-							'btnSubmit': {
-								'el': btnSubmit,
-								'formSendingStatus': 0,
-								'submitForm': ''
-							}
-						};
-
-						t_triggerEvent(form, 'tildaform:aftererror');
-						return false;
+						allError = form.querySelectorAll('.js-errorbox-all .js-rule-error-all');
 					}
 
-					// TODO: Search a project with added custom captcha and check
-					if (form.querySelector('.g-recaptcha') && grecaptcha) {
-						window.tildaForm.currentFormProccessing = {
-							form: form,
-							btn: btnSubmit,
-							formtype: formType,
-							formskey: formKey
-						};
-
-						// TODO: jq data
-						var captchaId = $(form).data('tilda-captcha-clientid');
-
-						if (window.tildaFormData[formId] && window.tildaFormData[formId]['form']) {
-							captchaId = window.tildaFormData[formId]['form']['capthaClientId'];
-						}
-
-						if (!captchaId) {
-							var opts = {
-								size: 'invisible',
-								sitekey: form.getAttribute('data-tilda-captchakey'),
-								callback: window.tildaForm.captchaCallback
-							};
-							captchaId = grecaptcha.render(formId + 'recaptcha', opts);
-							// TODO: jq data
-							$(form).data('tilda-captcha-clientid', captchaId);
-							window.tildaFormData[formId] = {
-								'form': {
-									'el': form,
-									'capthaClientId': captchaId
-								}
-							};
-						} else {
-							grecaptcha.reset(captchaId);
-						}
-						grecaptcha.execute(captchaId);
-						return false;
+					for (var i = 0; i < allError.length; i++) {
+						allError[i].innerHTML = 'Please set receiver in block with forms';
+						allError[i].style.display = 'block';
 					}
 
-					window.tildaForm.send(form, btnSubmit, formType, formKey);
+					for (var i = 0; i < errorBoxs.length; i++) {
+						errorBoxs[i].style.display = 'block';
+					}
+
+					t_addClass(form, 'js-send-form-error');
+					t_removeClass(btnSubmit, 't-btn_sending');
+
+					btnSubmit.tildaSendingStatus = '0';
+
+					t_triggerEvent(form, 'tildaform:aftererror');
+					return;
 				}
-				return false;
+
+				// Add custom google recaptcha from the user
+				if (form.querySelector('.g-recaptcha') && grecaptcha) {
+					window.tildaForm.currentFormProccessing = {
+						form: form,
+						btn: btnSubmit,
+						formtype: formType,
+						formskey: formKey
+					};
+
+					var captchaId = form.tildaCaptchaClientId;
+
+					if (!captchaId) {
+						var opts = {
+							size: 'invisible',
+							sitekey: form.getAttribute('data-tilda-captchakey'),
+							callback: window.tildaForm.captchaCallback
+						};
+						captchaId = grecaptcha.render(formId + 'recaptcha', opts);
+						form.tildaCaptchaClientId = captchaId
+					} else {
+						grecaptcha.reset(captchaId);
+					}
+					grecaptcha.execute(captchaId);
+					return;
+				}
+
+				window.tildaForm.send(form, btnSubmit, formType, formKey);
 			}
+			return;
+		}
 
-			/**
-			 * DblClick Event default
-			 */
-			function t_forms__initBtnDblClick(event) {
-				event = event || window.event;
-				var target = event.target || event.srcElement;
-				var btnSubmit = target.closest('[type="submit"]') ? target : false;
+		/**
+		 * DblClick Event default
+		 *
+		 * @param {MouseEvent} event - event
+		 * @returns {boolean || undefined}
+		 */
+		function t_forms__initBtnDblClick(event) {
+			event = event || window.event;
+			var target = event.target || event.srcElement;
+			var btnSubmit = target.closest('[type="submit"]') ? target : false;
 
-				if (!btnSubmit) return;
+			if (!btnSubmit) return;
 
-				event.preventDefault ? event.preventDefault() : (event.returnValue = false);
-				return false;
-			}
+			event.preventDefault ? event.preventDefault() : (event.returnValue = false);
+			return false;
 		}
 
 		// remembering the utm tag so that later it can be passed on
 		try {
-			var TILDAPAGE_URL = window.location.href, TILDAPAGE_QUERY = '', TILDAPAGE_UTM = '';
+			var TILDAPAGE_URL = window.location.href,
+				TILDAPAGE_QUERY = '',
+				TILDAPAGE_UTM = '';
 			if (TILDAPAGE_URL.toLowerCase().indexOf('utm_') !== -1) {
 				TILDAPAGE_URL = TILDAPAGE_URL.toLowerCase();
 				TILDAPAGE_QUERY = TILDAPAGE_URL.split('?');
@@ -3999,4 +3781,4 @@ function t_form_dict(msg) {
 			/* */
 		}
 	});
-})();
+}
