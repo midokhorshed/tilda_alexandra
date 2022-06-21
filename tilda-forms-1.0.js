@@ -48,7 +48,7 @@ t_forms__onReady(function() {
 	if (lang === 'RU' || lang === 'EN') {
 		initFormsScript();
 	} else {
-		var scriptUrl = 'https://static.tildacdn.com/js/tilda-forms-dict-1.0.min.js';
+		var scriptUrl = 'https://static.tildacdn.com/js/tilda-forms-dict-1.0.js';
 		if (document.head.querySelector('script[src^="' + scriptUrl + '"]')) {
 			t_onFuncLoad('getFullDict', function () {
 				initFormsScript();
