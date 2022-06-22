@@ -1,5 +1,51 @@
-function getFullDict() {
+function t_form__getDict() {
 	var dict = [];
+
+  dict['EN'] = {
+		success: 'Thank you! Your data has been submitted.',
+		successorder: 'Thank you! Order created. Please wait while you are redirected to the payment page...',
+		email: 'Please enter a valid email address',
+		url: 'Please put a correct URL',
+		phone: 'Please put a correct phone number',
+		number: 'Please put a correct number',
+		date: 'Please put a correct date',
+		time: 'Please put a correct time (HH:mm)',
+		name: 'Please put a name',
+		namerus: 'Please put a correct name (only cyrillic letters)',
+		nameeng: 'Please put a correct name (only latin letters)',
+		string: 'You put incorrect symbols. Only letters, numbers and punctuation symbols are allowed',
+		req: 'Please fill out all required fields',
+		reqfield: 'Required field',
+		minlength: 'Value is too short',
+		maxlength: 'Value too big',
+		emptyfill: 'None of the fields are filled in',
+		chosevalue: 'Please select an address from the options',
+		deliveryreq: 'It is not possible to place an order without delivery. Please refresh the page and try again',
+		promocode: 'Please activate promo code or clear input field',
+	};
+
+	dict['RU'] = {
+		success: 'Спасибо! Данные успешно отправлены.',
+		successorder: 'Спасибо! Заказ оформлен. Пожалуйста, подождите. Идет переход к оплате...',
+		email: 'Укажите, пожалуйста, корректный email',
+		url: 'Укажите, пожалуйста, корректный URL',
+		phone: 'Укажите, пожалуйста, корректный номер телефона',
+		number: 'Укажите, пожалуйста, корректный номер',
+		date: 'Укажите, пожалуйста, корректную дату',
+		time: 'Укажите, пожалуйста, корректное время (ЧЧ:ММ)',
+		name: 'Укажите, пожалуйста, имя',
+		namerus: 'Укажите, пожалуйста, имя (только кириллица)',
+		nameeng: 'Укажите, пожалуйста, имя (только латиница)',
+		string: 'Вы написали некорректные символы. Разрешены только буквы, числа и знаки пунктуации',
+		req: 'Пожалуйста, заполните все обязательные поля',
+		reqfield: 'Обязательное поле',
+		minlength: 'Слишком короткое значение',
+		maxlength: 'Слишком длинное',
+		emptyfill: 'Ни одно поле не заполнено',
+		chosevalue: 'Пожалуйста, выберите адрес из предложенных вариантов',
+		deliveryreq: 'Невозможно оформить заказ без доставки. Пожалуйста, перезагрузите страницу и попробуйте еще раз.',
+		promocode: 'Активируйте, пожалуйста промокод или очистите поле',
+	};
 
   dict['FR'] = {
     success: 'Merci! Vos données ont été soumises.',
