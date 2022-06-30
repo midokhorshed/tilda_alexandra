@@ -1,4 +1,4 @@
-function t_form__getDict() {
+function t_forms__getDict() {
 	var dict = [];
 
   dict['EN'] = {
