@@ -64,7 +64,7 @@
 			 if (!document.head.querySelector('script[src*="' + fileName + '"]')) {
 				 var script = document.createElement('script');
 				 script.type = 'text/javascript';
-				 script.src = 'http://127.0.0.1:8080' + fileName + '.js';
+				 script.src = 'http://127.0.0.1:8080/' + fileName + '.js';
  
 				 script.onerror = function () {
 					 console.error('Failed to load tilda-forms-payments: ', this.src);
@@ -81,7 +81,7 @@
 			 if (!document.head.querySelector('script[src*="' + fileName + '"]')) {
 				 var script = document.createElement('script');
 				 script.type = 'text/javascript';
-				 script.src = 'http://127.0.0.1:8080' + fileName + '.js';
+				 script.src = 'http://127.0.0.1:8080/' + fileName + '.js';
  
 				 script.onerror = function () {
 					 console.error('Failed to load tilda-forms-dictionary: ', this.src);
