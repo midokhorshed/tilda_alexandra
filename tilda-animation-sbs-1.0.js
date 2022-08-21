@@ -1,510 +1,842 @@
 /**
  * tilda-animation-sbs используется в Зеро-блоках для пошаговой анимации.
- * Здесь передается объект с данными, настроенными пользователем для анимации и генерируется в @keyframes и добавляется в тег стилей.
+ * Здесь передается объект с данными, настроенными пользователем для анимации,
+ * генерируется в @keyframes и добавляется в <style>.
  */
- if (document.readyState !== 'loading') {
-	t_animateSbs__init();
-} else {
-	document.addEventListener('DOMContentLoaded', t_animateSbs__init);
-}
 
 /**
- * init animation
+ * HTML element with parameters, which gets from data-attributes,
+ * placed inside animatedObject in 'elements' key.
  *
- * @returns {void}
+ * scaledDifference value need to calculate difference with top position of unscaled parent
+ * and top position of scaled element for Firefox/Opera browser with autoscale.
+ *
+ * 'status' key need to remove from animated list innactive elements.
+ *
+ * Key 'animType' depend on installed event from editor:
+ * for value 'element on screen' - 'intoview'
+ * for value 'block on screen' - 'blockintoview'
+ * for value 'on scroll' - 'scroll'
+ * for value 'on hover' - 'hover'
+ * for value 'on click' - 'click'
+ *
+ *
+ * @typedef {HTMLElement & {
+ *   animType: 'intoview' | 'blockintoview' | 'scroll' | 'click' | 'hover',
+ *   trigger: number,
+ *   triggerElems: string,
+ *   wrapperEl: HTMLElement,
+ *   zIndex: string | undefined,
+ *   loop: 'loop' | 'noreverse' | null,
+ *   topOffset: number,
+ *   parentRecTopPos: number,
+ *   triggerOffset: number | undefined,
+ *   steps: animatedStepToElement[],
+ *   scaledDifference: number | undefined,
+ *   uniqueID: string,
+ *   status: 'innactive' | 'active' | undefined
+ *  }
+ * } AnimatedHTML
  */
-function t_animateSbs__init() {
-	var record = document.querySelector('.t-records');
-	var recordMode = record ? record.getAttribute('data-tilda-mode') : null;
-	if (window.isSearchBot ||
-		t_animateParallax__checkOldIE() ||
-		recordMode === 'edit') {
-		return;
-	}
-	
-	// prevent horizontal scroll
-	if (document.querySelectorAll('[data-animate-sbs-event="scroll"]').length) {
-		document.querySelector('.t-records#allrecords').style.overflowX = 'hidden';
-	}
-	
-	t_animateSbs__wrapAnimatedAtomEls();
-	setTimeout(function () {
-		t_animateSbs__initAllRes();
-	}, 50);
-}
-
 
 /**
- * wrap animated atom elements
+ * animated object with sbs-anim elements.
+ * They placed into key 'elements' as type AnimatedHTML,
+ * scrollTop - window.pageYOffset, may be updated
+ * needUpdate - if pageYOffset changed, set needUpdate as true
+ * isEditMode - to play animation in edit mode, we should check this value
+ * Created in t_animationSBS__initAllRes()
+ *
+ * @typedef {
+ *  {
+ *    elements: AnimatedHTML[],
+ *    scrollTop: number,
+ *    needUpdate: Boolean,
+ *    isEditMode: Boolean
+ *  }
+ * } animatedObject
  */
-function t_animateSbs__wrapAnimatedAtomEls() {
-	var wrappingEls = document.querySelectorAll('[data-animate-sbs-event]');
-	Array.prototype.forEach.call(wrappingEls, function (wrappingEl) {
-		var atomElement = wrappingEl.querySelector('.tn-atom');
-		if (atomElement) {
-			// condition because of bug in Chrome (MAC)
-			if (navigator.userAgent.indexOf('Chrome') === -1) {
-				atomElement.style.WebkitBackfaceVisibility = 'hidden';
-				atomElement.style.backfaceVisibility = 'hidden';
-			}
-			if (!atomElement.closest('.tn-atom__sbs-anim-wrapper') &&
-				t_animateSbs__getOptsPublishMode(wrappingEl)) {
-				t_animateSbs__wrapEl(atomElement, 'tn-atom__sbs-anim-wrapper');
-				// reset cache after wrapping el
-				atomElement = wrappingEl.querySelector('.tn-atom');
-				
-				var parentElem = atomElement.closest('.t396__elem');
-				var animWrapper = atomElement.closest('.tn-atom__sbs-anim-wrapper');
-				
-				// add radius for animation wrapper, because we set filters for atom's container (t396__elem)
-				var elType = parentElem ? parentElem.getAttribute('data-elem-type') : '';
-				// getPropertyValue returns border-radius value in px. If it cannot setted, will return '0px'
-				var elBorderRadius = window.getComputedStyle(parentElem).getPropertyValue('border-radius');
-				if (elType === 'shape' && elBorderRadius && parseInt(elBorderRadius)) {
-					animWrapper.style.borderRadius = elBorderRadius;
-				}
-				
-				var parentFilterStyle = window.getComputedStyle(parentElem).getPropertyValue('filter');
-				var parentWebkitFilterStyle = window.getComputedStyle(parentElem)
-					.getPropertyValue('-webkit-filter');
-				var parentBackdropFilter = window.getComputedStyle(parentElem)
-					.getPropertyValue('backdrop-filter');
-				var parentWebkitBackdropFilter = window.getComputedStyle(parentElem)
-					.getPropertyValue('-webkit-backdrop-filter');
-				var isParentHasFilter = parentElem ?
-					((parentFilterStyle && parentFilterStyle !== 'none') ||
-						(parentWebkitFilterStyle && parentWebkitFilterStyle !== 'none')) : null;
-				var isParentHasBackdropFilter = parentElem ?
-					((parentBackdropFilter && parentBackdropFilter !== 'none') ||
-						(parentWebkitBackdropFilter && parentWebkitBackdropFilter !== 'none')) : null;
-				
-				if (isParentHasFilter) {
-					animWrapper.style.WebkitFilter = parentWebkitFilterStyle;
-					animWrapper.style.filter = parentFilterStyle;
-					parentElem.style.filter = 'none';
-					parentElem.style.WebkitFilter = 'none';
-				}
-				if (isParentHasBackdropFilter) {
-					animWrapper.style.WebkitBackdropFilter = parentWebkitBackdropFilter;
-					animWrapper.style.backdropFilter = parentBackdropFilter;
-					parentElem.style.backdropFilter = 'none';
-					parentElem.style.WebkitBackdropFilter = 'none';
-				}
-			}
-		}
+
+/**
+ * objSteps - parsed into object string from data-attribute, which contains
+ * steps object with some parameters:
+ * ti/di - duration in ms / distance in px
+ * mx - axisX movement in px
+ * my - axisY movement in px
+ * sx - scale axisX - (value from editor / 100)
+ * sy - scale axisY - (value from editor / 100)
+ * op - opacity - (value from editor / 100)
+ * ro - rotate - in deg's
+ * fi - fix - '' for none, 'fixed' for fixed
+ * bl - blur
+ * ea - easing - '' for linear, 'easeOut' for ease out
+ * dt/dd - delay (value from editor * 1000) in ms / delay in px
+ *
+ * One object inside array - one step.
+ *
+ * Why in some cases provide to element 'ti' key, in other - 'di'?
+ * It depends on animation event. Event on scroll uses distance and delay in px,
+ * that why to object append keys 'di' and 'dd'. In other cases should be 'ti' and 'dt'.
+ * Not all events has value fix: fixed/none, which append to step object key 'fi'.
+ *
+ * @typedef {
+ *  {
+ *    di: string | undefined,
+ *    ti: string | undefined,
+ *    mx: string,
+ *    my: string,
+ *    sx: string,
+ *    sy: string,
+ *    op: string,
+ *    ro: string,
+ *    fi: '' | 'fixed' | undefined,
+ *    bl: string,
+ *    ea: '' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bounceFin',
+ *    dt: string | undefined,
+ *    dd: string | undefined,
+ *  }
+ * } animationStep
+ */
+
+/**
+ * styles, created in t_animationSBS__createStepStyles. They value matches steps keys with same value,
+ * but in styles this values more readeble: key 'moveX' vs 'mx'.
+ *
+ * All keys, exept last, use number type (in step it has string).
+ *
+ * Last key 'fix' return boolean value: true, if step has key 'fi' and it value = 'fixed'.
+ *
+ * @typedef {
+ *  {
+ *   moveX: number,
+ *   moveY: number,
+ *   scaleX: number,
+ *   scaleY: number,
+ *   opacity: number,
+ *   rotate: number,
+ *   blur: number,
+ *   fix: Boolean
+ *  }
+ * } stepStyles
+ */
+
+/**
+ * step for animated HTMLElement. Difference between this step and animationStep is as follows:
+ * 1. animationStep - it's parsed object from data-attribute,
+ *    animatedStepToElement - object, created in t_animationSBS__cacheAndSetData()
+ * 2. animatedStepToElement more readeble then animationStep
+ * 3. animatedStepToElement placed inside AnimatedHTML (key-array 'steps')
+ *
+ * Summary: animatedStepToElement parse as step value with more readeble parameters, then animationStep,
+ * and placed inside AnimatedHTML.steps array
+ *
+ * @typedef {
+ *   {
+ *    state: 'started' | 'finished' | 'unactive',
+ *    styles: stepStyles,
+ *    prevUnfixedDist: number,
+ *    dist: number,
+ *    start: number | undefined,
+ *    end: number | undefined,
+ *    time: string | undefined,
+ *    ease: '' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bounceFin' | undefined
+ *   }
+ * } animatedStepToElement
+ */
+
+/**
+ * scroll element state object
+ *
+ * Summary: animatedStepToElement parse as step value with more readeble parameters, then animationStep,
+ * and placed inside AnimatedHTML.steps array
+ *
+ * @typedef {
+ * 		{
+ * 			opacity: number,
+ * 			blur: number,
+ * 			fix: Boolean,
+ * 			fixedShiftY: number,
+ * 			translateX: number,
+ * 			translateY: number,
+ * 			scaleX: number,
+ * 			scaleY: number,
+ * 			rotate: number,
+ * 			prevUnfixedDist: number | undefined
+ * 		}
+ * } scrollElementState
+ */
+
+window.t_animationSBS__isOnlyScalable = Boolean(
+	navigator.userAgent.search('Firefox') !== -1 ||
+		Boolean((window.opr && window.opr.addons) || window.opera || navigator.userAgent.indexOf(' OPR/') !== -1)
+);
+window.t_animationSBS__isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+// start animation, when the contents of its tab have become visible
+if (document.visibilityState === 'visible') {
+	if (document.readyState !== 'loading') {
+		t_animationSBS__init();
+	} else {
+		document.addEventListener('DOMContentLoaded', t_animationSBS__init);
+	}
+} else {
+	document.addEventListener('visibilitychange', t_animationSBS__checkVisibilityPage);
+}
+
+function t_animationSBS__checkVisibilityPage() {
+	if (document.visibilityState === 'visible') {
+		t_onReady(t_animationSBS__init);
+		document.removeEventListener('visibilitychange', t_animationSBS__checkVisibilityPage);
+	}
+}
+
+/**
+ * check terms to create sbs-animation and if the conditions are met, create animation
+ */
+function t_animationSBS__init() {
+	var allRec = document.getElementById('allrecords');
+	var isEditMode = allRec ? allRec.getAttribute('data-tilda-mode') === 'edit' : null;
+	if (!isEditMode) isEditMode = Boolean(document.getElementById('for_redactor_toolbar'));
+	if (/Bot/i.test(navigator.userAgent) || t_animationSBS__checkOldIE() || isEditMode) return;
+
+	// prevent horizontal scroll
+	if (document.querySelector('[data-animate-sbs-event="scroll"]')) allRec.style.overflowX = 'hidden';
+
+	// initing animation after zeroblock is render
+	t_animationSBS__isZeroBlocksRender(function () {
+		t_animationSBS__wrapAndUpdateEls();
+		t_animationSBS__initAllRes(isEditMode);
 	});
 }
 
 /**
+ * as our script is async, we should wait, when zeroblock will be rendered.
+ * For new sites we can use artBoardRendered custom event, but for old - only setTimeout.
  *
- * @returns {void}
+ * @param {Function} callback
  */
-function t_animateSbs__initAllRes() {
-	var opts = {
-		els: document.querySelectorAll('[data-animate-sbs-event]'),
+function t_animationSBS__isZeroBlocksRender(callback) {
+	var firstAtrboard = document.querySelector('.t396__artboard');
+	if (!firstAtrboard) return;
+	if (firstAtrboard.classList.contains('rendered')) {
+		callback();
+	} else {
+		firstAtrboard.addEventListener('artBoardRendered', callback);
+	}
+}
+
+/**
+ * wrap animated atom elements and set/remove installed styles
+ */
+function t_animationSBS__wrapAndUpdateEls() {
+	var animatedElements = Array.prototype.slice.call(document.querySelectorAll('[data-animate-sbs-event]'));
+	animatedElements.forEach(function (animatedEl) {
+		var atom = animatedEl.querySelector('.tn-atom');
+		if (!atom) return;
+
+		// condition because of bug in Chrome (MAC)
+		if (navigator.userAgent.indexOf('Chrome') === -1) {
+			atom.style.WebkitBackfaceVisibility = 'hidden';
+			atom.style.backfaceVisibility = 'hidden';
+		}
+
+		// if element hasn't options (mobile animation disabled)
+		// or element already has sbs-wrapper - leave from this function
+		var atomWrapper = atom.closest('.tn-atom__sbs-anim-wrapper');
+		var isElementHasAnimateOpts = t_animationSBS__getAnimOptions(animatedEl, 'published', null);
+		if (atomWrapper || !isElementHasAnimateOpts) return;
+
+		// wrap scaled wrapper, if zeroblock has autoscaled option, and browser is Firefox or Opera
+		var scaleWrapper = atom.closest('.tn-atom__scale-wrapper');
+		t_animationSBS__wrapEl(scaleWrapper || atom, 'tn-atom__sbs-anim-wrapper');
+
+		// update values after wrapping
+		atom = animatedEl.querySelector('.tn-atom');
+		atomWrapper = atom.closest('.tn-atom__sbs-anim-wrapper');
+
+		t_animationSBS__updateStylesAfterWrapping(atom, atomWrapper);
+	});
+}
+
+function t_animationSBS__updateStylesAfterWrapping(atom, wrapper) {
+	var parentElem = atom.closest('.t396__elem');
+
+	// add border-radius property for animation wrapper, because we set filters for parentElem
+	// getPropertyValue returns border-radius value in px. If it cannot setted, will return '0px'
+	var elType = parentElem ? parentElem.getAttribute('data-elem-type') : '';
+	var elBorderRadius = window.getComputedStyle(parentElem).getPropertyValue('border-radius');
+	if (elType === 'shape' && parseInt(elBorderRadius, 10)) {
+		wrapper.style.borderRadius = elBorderRadius;
+	}
+
+	// find filters in parent element to set them to wrapper, and remove from current parent
+	var filterList = ['filter', 'backdrop-filter'];
+	filterList = filterList.map(function (filter) {
+		var webkitFilter = '-webkit-' + filter;
+		var parentFilterValue = window.getComputedStyle(parentElem).getPropertyValue(filter);
+		if (parentFilterValue === 'none' || parentFilterValue === '')
+			parentFilterValue = window.getComputedStyle(parentElem).getPropertyValue(webkitFilter);
+		if (parentFilterValue !== 'none' && parentFilterValue !== '')
+			return {filter: filter, webkitFilter: webkitFilter, value: parentFilterValue};
+	});
+	filterList = filterList.filter(function (filter) {
+		return filter;
+	});
+	var atomTransformValue = window.getComputedStyle(atom).transform;
+
+	filterList.forEach(function (filterOpts) {
+		wrapper.style[filterOpts.webkitFilter] = filterOpts.value;
+		wrapper.style[filterOpts.filter] = filterOpts.value;
+		parentElem.style[filterOpts.webkitFilter] = 'none';
+		parentElem.style[filterOpts.filter] = 'none';
+		if (atomTransformValue === 'none') atom.style.transform = 'translateZ(0)';
+	});
+
+	t_animationSBS__chromeFixBackdropFilter(atom, wrapper, filterList);
+}
+
+function t_animationSBS__chromeFixBackdropFilter(atom, wrapper, filterList) {
+	var hasBackdropFilter = filterList.some(function (opt) {
+		return opt.filter === 'backdrop-filter';
+	});
+	if (navigator.userAgent.indexOf('Chrome') === -1 || !hasBackdropFilter) return;
+	var atomBG = window.getComputedStyle(atom).getPropertyValue('background-color');
+	var atomsOpacity = window.getComputedStyle(atom).getPropertyValue('opacity');
+	if (atomBG === 'rgba(0, 0, 0, 0)' || atomsOpacity === '1') return;
+	var atomsBackgroundColorRGB = atomBG.substring(atomBG.indexOf('(') + 1, atomBG.indexOf(')'));
+	wrapper.style.backgroundColor = 'rgba(' + atomsBackgroundColorRGB + ',' + atomsOpacity + ')';
+	atom.style.opacity = '1';
+	atom.style.backgroundColor = 'transparent';
+}
+
+/**
+ * Create animatedObject and set main triggers and steps for sbs-animation.
+ *
+ * @param {Boolean} isEditMode
+ */
+function t_animationSBS__initAllRes(isEditMode) {
+	var animatedObject = {
+		elements: Array.prototype.slice.call(document.querySelectorAll('[data-animate-sbs-event]')),
 		scrollTop: window.pageYOffset,
-		stop: false,
 		needUpdate: true,
+		isEditMode: isEditMode,
 	};
-	
-	opts.mode = (opts.els[0] ? opts.els[0].hasAttribute('data-field-sbsevent-value') : '') ? 'edit' : 'publish';
-	
-	if (opts.els.length === 0) {
-		return;
-	}
-	
-	t_animateSbs__cashElsData(opts);
-	var animStuff = t_animateSbs__generateKeyframes(opts);
-	if (animStuff) {
-		document.head.insertAdjacentHTML('beforeend', '<style class="sbs-anim-keyframes">' + animStuff +
-			'</style>');
-	}
-	
+
+	if (!animatedObject.elements.length) return;
+
+	// update animatedObject.elements, set for them steps with styles
+	t_animationSBS__cacheAndSetData(animatedObject);
+
+	// generate keyframes and append them to the head
+	t_animationSBS__generateKeyframes(animatedObject);
+
+	// update lazyload
 	var allRecords = document.getElementById('allrecords');
-	var lazyLoadValue = allRecords ? allRecords.getAttribute('data-tilda-lazy') : null;
-	if (window.lazy === 'y' || lazyLoadValue === 'yes') {
-		t_animateSbs__onFuncLoad('t_lazyload_update', function () {
+	var isLazy = allRecords ? allRecords.getAttribute('data-tilda-lazy') === 'yes' : false;
+	if (window.lazy === 'y' || isLazy)
+		t_onFuncLoad('t_lazyload_update', function () {
 			t_lazyload_update();
 		});
-	}
-	
-	var resizeEnd;
-	
-	/**
-	 * update animation
-	 */
+
+	// find all elements, that has animation by such events - element on Screen / block on Screen
+	var elOrBlockOnScreenList = animatedObject.elements.filter(function (el) {
+		var eventAttribute = 'data-animate-sbs-event';
+		return el.getAttribute(eventAttribute) === 'intoview' || el.getAttribute(eventAttribute) === 'blockintoview';
+	});
+
+	// update animation on resize, displaychanged or while using Safari and open page with pageYOffset !== 0
+	var timerID;
+
 	function animationUpdate() {
-		clearTimeout(resizeEnd);
-		resizeEnd = setTimeout(function () {
-			opts.stop = false;
-			t_animateSbs__cashElsData(opts);
-			t_animateSbs__triggerScrollAnim(opts);
-			var animStuff = t_animateSbs__generateKeyframes(opts);
-			var pastedStyles = document.head.querySelector('style.sbs-anim-keyframes');
-			var oldStyle = pastedStyles ? pastedStyles.textContent : '';
-			if (animStuff && pastedStyles && animStuff !== oldStyle) {
-				pastedStyles.textContent = animStuff;
-			}
+		clearTimeout(timerID);
+		timerID = setTimeout(function () {
+			animatedObject.elements = Array.prototype.slice.call(document.querySelectorAll('[data-animate-sbs-event]'));
+			t_animationSBS__cacheAndSetData(animatedObject);
+			t_animationSBS__triggerScrollAnim(animatedObject);
+			t_animationSBS__updateIntoViewElsState(animatedObject, elOrBlockOnScreenList);
+			t_animationSBS__generateKeyframes(animatedObject);
 		}, 500);
 	}
-	
-	window.addEventListener('resize', animationUpdate);
+
+	if ('ResizeObserver' in window) {
+		t_animationSBS__createResizeObserver(function () {
+			// in Safari values from @keyframes may be cached,
+			// to remove cache should update ID
+			if (window.t_animationSBS__isSafari) {
+				animatedObject.elements.forEach(function (el) {
+					el.wrapperEl.removeAttribute('id');
+				});
+			}
+			animationUpdate();
+		});
+	} else {
+		var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+		if (isMobile) {
+			window.addEventListener('orientationchange', function () {
+				// setTimeout need to wait when viewport will be updated
+				setTimeout(function () {
+					animationUpdate();
+				}, 300);
+			});
+		} else {
+			window.addEventListener('resize', animationUpdate);
+		}
+	}
+
 	var zeroBlocks = document.querySelectorAll('.t396');
 	Array.prototype.forEach.call(zeroBlocks, function (zeroBlock) {
 		zeroBlock.addEventListener('displayChanged', animationUpdate);
 	});
-	
-	t_animateSbs__triggerTimeAnim(opts);
-	
-	var scrollAnimationEl = document.querySelectorAll('[data-animate-sbs-event=scroll]');
-	if (scrollAnimationEl.length) {
-		t_animateSbs__triggerScrollAnim(opts);
-		t_animateSbs__checkFrame(opts);
+
+	// fix for Safari to update animation if user reloading page and pageYOffset !== 0
+	if (window.t_animationSBS__isSafari) {
+		window.addEventListener('scroll', reinitAnimationAfterPageLoad);
+
+		function reinitAnimationAfterPageLoad() {
+			if (window.pageYOffset !== 0) animationUpdate();
+			window.removeEventListener('scroll', reinitAnimationAfterPageLoad);
+		}
 	}
-	
+
+	// all types of animation, exept 'on Scroll'
+	t_animationSBS__triggerNoScrollAnimation(animatedObject, elOrBlockOnScreenList);
+
+	// only for 'on Scroll' animation
+	var scrollAnimationEl = document.querySelectorAll('[data-animate-sbs-event="scroll"]');
+	//TODO анимация по скроллу работает рывками, надо рефакторить
+	if (scrollAnimationEl.length) {
+		t_animationSBS__triggerScrollAnim(animatedObject);
+		t_animationSBS__checkFrame(animatedObject);
+	}
+
 	window.addEventListener('load', function () {
-		t_animateSbs__rereadElsValues(opts);
+		t_animationSBS__changeElValues(animatedObject);
 	});
-	
+
+	// if window is not loaded (include DOM complete and all scripts are loaded) too long, update values by setTimeout
 	setTimeout(function () {
-		t_animateSbs__rereadElsValues(opts);
+		t_animationSBS__changeElValues(animatedObject);
 	}, 3000);
 }
 
-
 /**
- * update on scroll animation
+ * create resize observer to update animation, when user open dropdown list, or click
+ * 'show more' button in catalog
  *
- * @param {object} opts - options
+ * @param {Function} callback
  */
-function t_animateSbs__rereadElsValues(opts) {
-	var elements = opts ? opts.els : null;
-	if (elements && elements.length) {
-		Array.prototype.forEach.call(elements, function (element) {
-			t_animateSbs__cashElsTopOffset(element, opts);
-			if (element.changeType === 'scroll') {
-				t_animateSbs__updateStepsStartValues(element);
+function t_animationSBS__createResizeObserver(callback) {
+	var getClientRects = document.body.getClientRects();
+	var initHeight = getClientRects[0].height;
+	var animateParallaxResizeObserver = new ResizeObserver(function (entries) {
+		entries.forEach(function (entry) {
+			if (entry.contentRect.height !== initHeight) {
+				initHeight = getClientRects[0].height;
+				callback();
 			}
 		});
-	}
+	});
+	animateParallaxResizeObserver.observe(document.body);
 }
 
 /**
- * @param {object} opts - options
+ * Update and set triggers.
+ * For scroll animation update steps values.
+ *
+ * @param {animatedObject} animatedObject - options
  */
-function t_animateSbs__checkFrame(opts) {
-	opts.needUpdate = t_animateSbs__checkChanges(opts);
-	if (opts.needUpdate && opts.stop === false) {
-		t_animateSbs__triggerScrollAnim(opts);
-	}
-	requestAnimationFrame(function () {
-		t_animateSbs__checkFrame(opts);
+function t_animationSBS__changeElValues(animatedObject) {
+	animatedObject.elements.forEach(function (element) {
+		t_animationSBS__setAndCacheElTopPos(element, animatedObject);
+		if (element.animType !== 'scroll') return;
+		t_animationSBS__updateStepsValues(element);
 	});
 }
 
 /**
- * @param {object} opts - options
- * @returns {boolean} - is scroll changes
+ * @param {animatedObject} animatedObject - options
  */
-function t_animateSbs__checkChanges(opts) {
-	var oldTop = opts.scrollTop;
-	opts.scrollTop = window.pageYOffset;
-	return (oldTop !== opts.scrollTop && opts.stop === false);
+function t_animationSBS__checkFrame(animatedObject) {
+	animatedObject.needUpdate = t_animationSBS__checkPosChanges(animatedObject);
+	if (animatedObject.needUpdate) t_animationSBS__triggerScrollAnim(animatedObject);
+	requestAnimationFrame(function () {
+		t_animationSBS__checkFrame(animatedObject);
+	});
 }
 
 /**
- * trigger animation
- *
- * @param {object} opts - options
+ * @param {animatedObject} animatedObject - options
+ * @returns {boolean} - is scrollTop position changed?
  */
-function t_animateSbs__triggerScrollAnim(opts) {
-	var elements = opts ? opts.els : null;
-	if (elements && elements.length) {
-		Array.prototype.forEach.call(elements, function (el) {
-			if (el.changeType !== 'time') {
-				var elState = {
-					opacity: 1,
-					blur: 0,
-					fix: false,
-					fixedShiftY: 0,
-					translateX: 0,
-					translateY: 0,
-					scaleX: 1,
-					scaleY: 1,
-					rotate: 0,
-				};
-				
-				t_animateSbs__triggerScrollAnim__checkElSteps(opts, el, elState);
-				t_animateSbs__triggerScrollAnim__changeEl(el, elState);
-			}
-		});
-	}
+function t_animationSBS__checkPosChanges(animatedObject) {
+	var oldTop = animatedObject.scrollTop;
+	animatedObject.scrollTop = window.pageYOffset;
+	return oldTop !== animatedObject.scrollTop;
+}
+
+/**
+ * trigger 'on Scroll' animation
+ *
+ * @param {animatedObject} animatedObject - options
+ */
+function t_animationSBS__triggerScrollAnim(animatedObject) {
+	animatedObject.elements.forEach(function (el) {
+		if (el.animType !== 'scroll') return;
+		var elState = {
+			opacity: 1,
+			blur: 0,
+			fix: false,
+			fixedShiftY: 0,
+			translateX: 0,
+			translateY: 0,
+			scaleX: 1,
+			scaleY: 1,
+			rotate: 0,
+		};
+
+		t_animationSBS__scrollAnimationCheckSteps(animatedObject, el, elState);
+		t_animationSBS__scrollAnimationUpdateTransform(el, elState);
+	});
 }
 
 /**
  * trigger scroll animation - check steps
  *
- * @param {object} opts - options
- * @param {HTMLElement} el - current element
- * @param {object} elState - state of current element
+ * @param {animatedObject} animatedObject - options
+ * @param {AnimatedHTML} animatedHTML - current element
+ * @param {scrollElementState} elState - state of current element
  */
-function t_animateSbs__triggerScrollAnim__checkElSteps(opts, el, elState) {
-	var steps = el ? el.steps : null;
-	if (steps && steps.length) {
-		Array.prototype.forEach.call(steps, function (step, i) {
-			step.index = i;
-			var trigger = opts.scrollTop + el.triggerOffset;
-			var isAfterStart = trigger >= step.start;
-			var isBeforeStart = trigger < step.start;
-			var isAfterEnd = step.end <= trigger;
-			var isBeforeEnd = step.end > trigger;
-			
-			if (isAfterStart && isBeforeEnd) {
-				step.state = 'started';
-				el.wrapperEl.style.willChange = 'transform';
-				var progress = trigger - step.start;
-				var percentage = (step.dist === 0) ? 1 : progress / step.dist;
-				elState.prevUnfixedDist = step.prevUnfixedDist;
-				t_animateSbs__triggerScrollAnim__calcStyle(elState, step, percentage);
-			}
-			if (isAfterEnd) {
-				step.state = 'finished';
-				el.wrapperEl.style.willChange = '';
-				t_animateSbs__triggerScrollAnim__calcStyle(elState, step, 1);
-			}
-			if (isBeforeStart && (step.state === 'started' || step.state === 'finished')) {
-				step.state = 'unactive';
-				el.wrapperEl.style.willChange = '';
-				t_animateSbs__triggerScrollAnim__calcStyle(elState, step, 0);
-			}
-		});
-	}
+function t_animationSBS__scrollAnimationCheckSteps(animatedObject, animatedHTML, elState) {
+	animatedHTML.steps.forEach(function (step, i) {
+		// append to trigger position .scaledDifference value - difference between parent and scaled element in Firefox/Opera
+		var trigger = animatedObject.scrollTop + animatedHTML.triggerOffset + (animatedHTML.scaledDifference || 0);
+		var isAfterStart = trigger >= step.start;
+		var isBeforeStart = trigger < step.start;
+		var isAfterEnd = step.end <= trigger;
+		var isBeforeEnd = step.end > trigger;
+
+		if (isAfterStart && isBeforeEnd) {
+			step.state = 'started';
+			if (animatedHTML.wrapperEl) animatedHTML.wrapperEl.style.willChange = 'transform';
+			var progress = trigger - step.start;
+			var percentage = step.dist === 0 ? 1 : progress / step.dist;
+			elState.prevUnfixedDist = step.prevUnfixedDist;
+			t_animationSBS__scrollAnimationCalcStepStyles(elState, step, percentage, i);
+		}
+		if (isAfterEnd) {
+			step.state = 'finished';
+			if (animatedHTML.wrapperEl) animatedHTML.wrapperEl.style.willChange = '';
+			t_animationSBS__scrollAnimationCalcStepStyles(elState, step, 1, i);
+		}
+		if (isBeforeStart && (step.state === 'started' || step.state === 'finished')) {
+			step.state = 'unactive';
+			if (animatedHTML.wrapperEl) animatedHTML.wrapperEl.style.willChange = '';
+			t_animationSBS__scrollAnimationCalcStepStyles(elState, step, 0, i);
+		}
+	});
+
 	// workaround for making element transparent on first step
-	if (el.steps[1] &&
-		el.steps[1].state === 'unactive' &&
-		el.steps[1].styles.opacity === 0 &&
-		el.steps[1].dist === 0) {
+	if (
+		animatedHTML.steps[1] &&
+		animatedHTML.steps[1].state === 'unactive' &&
+		animatedHTML.steps[1].styles.opacity === 0 &&
+		animatedHTML.steps[1].dist === 0
+	) {
 		elState.opacity = 0;
 	}
 }
 
 /**
- * generate keyframes
+ * calculate style for scroll animation
  *
- * @param {object} opts - options
- * @returns {string} - keyframes
+ * @param {scrollElementState} elState - current element state
+ * @param {animatedStepToElement} curStep - current step
+ * @param {number} percentage - percents
+ * @param {number} i - index of current step
+ * @returns {void}
  */
-function t_animateSbs__generateKeyframes(opts) {
-	var animStuff = '';
-	var elements = opts ? opts.els : null;
-	if (elements && elements.length) {
-		Array.prototype.forEach.call(elements, function (el) {
-			if (el.changeType === 'time') {
-				var keyframesOpts = {
-					timeDuration: 0,
-				};
-				var keyframes = [];
-				// var firstKeyframe = {'styles':{},'time':0,'ease':el.steps[0].ease};
-				// keyframes.push(firstKeyframe);
-				t_animateSbs__generateKeyframes__combineObjects(el.steps, keyframes, keyframesOpts);
-				t_animateSbs__generateKeyframes__correctFrames(keyframes);
-				t_animateSbs__generateKeyframes__countPercent(keyframes, keyframesOpts);
-				t_animateSbs__generateKeyframes__correctOpacityOnFirstStep(el, keyframes);
-				var keyframesStr = t_animateSbs__generateKeyframes__getTxtStyles(keyframes);
-				keyframesOpts.timeDuration /= 1000;
-				
-				if (keyframesStr !== '') {
-					animStuff += t_animateSbs__generateKeyframes__getFinalCss(el, keyframesOpts, keyframesStr);
-					if (el.loop !== 'loop' && el.loop !== 'noreverse' &&
-						(el.animType === 'hover' || el.animType === 'click')) {
-						animStuff += t_animateSbs__generateKeyframes__getReverseAnim(el);
-					}
-				}
-			}
-		});
+function t_animationSBS__scrollAnimationCalcStepStyles(elState, curStep, percentage, i) {
+	if (curStep.styles.fix === true && curStep.state === 'started') {
+		elState.fix = true;
+		elState.fixedShiftY = 0;
 	}
-	return animStuff;
-}
-
-/**
- * generate keyframes (get reverse animation)
- *
- * @param {HTMLElement} el - current element
- * @returns {string} - string of selectors
- */
-function t_animateSbs__generateKeyframes__getReverseAnim(el) {
-	var elementID = el.getAttribute('data-elem-id');
-	var recordID = el.closest('.t-rec') ? el.closest('.t-rec').getAttribute('id') : '';
-	var animStuff = '';
-	animStuff += '#' + recordID + ' ';
-	animStuff += '[data-elem-id="' + elementID +
-		'"].t-sbs-anim_started.t-sbs-anim_reversed .tn-atom__sbs-anim-wrapper';
-	animStuff += '{\n-webkit-animation-direction: reverse;\nanimation-direction: reverse;\n}\n\n';
-	
-	return animStuff;
-}
-
-/**
- * get final css
- *
- * @param {HTMLElement} el - current element
- * @param {object} keyframesOpts - options
- * @param {string} keyframesStr - keyframes string
- * @returns {string} - css value
- */
-function t_animateSbs__generateKeyframes__getFinalCss(el, keyframesOpts, keyframesStr) {
-	var animStuff = '';
-	
-	var elementID = el ? el.getAttribute('data-elem-id') : '';
-	var elementAnimationName = 'sbs-anim-' + elementID;
-	var parent = el ? el.closest('.t-rec') : null;
-	var recordID = parent ? parent.getAttribute('id') : '';
-	el.timeDuration = keyframesOpts.timeDuration;
-	
-	// for published page, where recs can be duplicated
-	if (recordID) {
-		animStuff += '#' + recordID + ' ';
-		elementAnimationName = 'sbs-anim-' + recordID + '-' + elementID;
-		if (keyframesOpts.reverse === true) {
-			elementAnimationName += '_reverse';
+	if (curStep.styles.fix === true && curStep.state === 'finished') {
+		elState.fix = false;
+		elState.fixedShiftY += curStep.dist;
+	}
+	if (curStep.styles.fix === true && curStep.state === 'unactive') {
+		if (i > 0 && elState.fix === true) {
+			return;
 		}
+		elState.fix = false;
 	}
-	var selector = keyframesOpts.hover === true ?
-		'[data-elem-id="' + elementID + '"].t-sbs-anim_started:hover .tn-atom__sbs-anim-wrapper' :
-		'[data-elem-id="' + elementID + '"].t-sbs-anim_started .tn-atom__sbs-anim-wrapper';
-	
-	var duration = keyframesOpts.timeDuration === 0 ? 0.00001 : keyframesOpts.timeDuration;
-	animStuff += selector + ' {\nanimation: ' + elementAnimationName + ' ' + duration + 's';
-	
-	if (el.loop === 'loop') {
-		animStuff += ' infinite';
+
+	elState.opacity += percentage * (curStep.styles.opacity - elState.opacity);
+	elState.blur += percentage * (curStep.styles.blur - elState.blur);
+	elState.translateX += percentage * curStep.styles.moveX;
+	elState.translateY += percentage * curStep.styles.moveY;
+	elState.scaleX += percentage * (curStep.styles.scaleX - elState.scaleX);
+	elState.scaleY += percentage * (curStep.styles.scaleY - elState.scaleY);
+	elState.rotate += percentage * curStep.styles.rotate;
+}
+
+/**
+ * change scroll animation element
+ *
+ * @param {AnimatedHTML} el - current element
+ * @param {scrollElementState} elState - element state
+ */
+function t_animationSBS__scrollAnimationUpdateTransform(el, elState) {
+	var zoomValue = t_animationSBS__getZoom(el);
+	var elParent = el.closest('.t396__elem');
+	var isElHasWillChange = elParent ? window.getComputedStyle(elParent).willChange : '';
+	if (window.t_animationSBS__isOnlyScalable) zoomValue = 1 / zoomValue;
+
+	if (elState.fix === true && el.wrapperEl && el.wrapperEl.style.position !== 'fixed') {
+		var top = el.triggerOffset - elState.prevUnfixedDist;
+		if (!window.t_animationSBS__isOnlyScalable) top /= zoomValue;
+		el.wrapperEl.style.top = top + (el.scaledDifference || 0) + 'px';
+		el.wrapperEl.style.position = 'fixed';
+		if (isElHasWillChange) elParent.style.willChange = 'unset';
+
+		// fix for Safari: move z-index from parent elem to fixed tn-atom__sbs-anim-wrapper,
+		// cause Safari doesn't render properly fixed element inside absolute positioned parent with z-index
+		if (el.zIndex) el.wrapperEl.style.zIndex = el.zIndex;
 	}
-	
-	//Fix scroll animation flickering in safari
-	var isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-	animStuff += isSafari ? ' linear 0.000001s' : ' linear';
-	if (el.loop !== 'loop') {
-		animStuff += ' forwards';
+
+	if (elState.fix === false && el.wrapperEl && window.getComputedStyle(el.wrapperEl).position === 'fixed') {
+		el.wrapperEl.style.position = '';
+		el.wrapperEl.style.top = '';
+		el.wrapperEl.style.zIndex = '';
+		if (el.zIndex) el.style.zIndex = el.zIndex;
+		if (elParent) elParent.style.willChange = '';
 	}
-	
-	animStuff += ';\nbackface-visibility: hidden;\n}\n\n@keyframes ' + elementAnimationName + ' {\n' +
-		keyframesStr + '}\n\n';
-	
-	return animStuff;
+
+	if (el.wrapperEl) el.wrapperEl.style.opacity = elState.opacity.toString();
+
+	var translateValue = '';
+	if (elState.translateX) {
+		var translateXValue = elState.translateX;
+		if (window.t_animationSBS__isOnlyScalable) translateXValue = translateXValue / zoomValue;
+		translateValue += 'translateX(' + translateXValue + 'px)';
+	}
+
+	if (elState.translateY !== 0 || elState.fixedShiftY !== 0) {
+		var translateYValue = elState.translateY + elState.fixedShiftY;
+		if (!window.t_animationSBS__isOnlyScalable) translateYValue /= zoomValue;
+		translateValue += 'translateY(' + translateYValue + 'px)';
+	}
+	if (elState.scaleX !== 1 || elState.scaleY !== 1) {
+		translateValue += 'scale(' + elState.scaleX + ',' + elState.scaleY + ')';
+	}
+	if (elState.rotate !== 0) {
+		translateValue += 'rotate(' + elState.rotate + 'deg)';
+	}
+
+	if (translateValue) {
+		if (el.wrapperEl) el.wrapperEl.style.transform = translateValue;
+	} else {
+		if (el.wrapperEl) el.wrapperEl.style.transform = 'scale(1)';
+	}
+}
+
+/**
+ * generate keyframes and append them to the document head
+ *
+ * @param {animatedObject} animatedObject - options
+ */
+function t_animationSBS__generateKeyframes(animatedObject) {
+	var generatedKeyframe = '';
+	animatedObject.elements.forEach(function (el) {
+		if (el.animType === 'scroll') return;
+		var keyframesOpts = {timeDuration: 0};
+		var keyframes = [];
+		var isOpacityAnimation = el.steps.every(function (step) {
+			return (
+				step.styles.moveX === 0 &&
+				step.styles.moveY === 0 &&
+				step.styles.scaleX === 1 &&
+				step.styles.scaleY === 1 &&
+				step.styles.rotate === 0 &&
+				step.styles.blur === 0 &&
+				step.styles.fix === false
+			);
+		});
+		t_animationSBS__generateKeyframes__combineObjects(el.steps, keyframes, keyframesOpts, isOpacityAnimation);
+		t_animationSBS__generateKeyframes__correctFrames(keyframes);
+		t_animationSBS__generateKeyframes__countPercent(keyframes, keyframesOpts);
+		t_animationSBS__generateKeyframes__correctOpacityOnFirstStep(el, keyframes);
+		var keyframesStr = t_animationSBS__generateKeyframes__getTxtStyles(el, keyframes);
+		keyframesOpts.timeDuration /= 1000;
+		if (!keyframesStr) return;
+		generatedKeyframe += t_animationSBS__generateKeyframes__getFinalCss(el, keyframesOpts, keyframesStr);
+		if (!el.loop && (el.animType === 'hover' || el.animType === 'click')) {
+			generatedKeyframe += t_animationSBS__generateKeyframes__getReverseAnim(el);
+		}
+	});
+
+	if (!generatedKeyframe) return;
+	if (animatedObject.isEditMode) return generatedKeyframe;
+	var generatedSBSKeyframe = document.querySelector('.sbs-anim-keyframes');
+	if (!generatedSBSKeyframe) {
+		generatedSBSKeyframe = document.createElement('style');
+		generatedSBSKeyframe.classList.add('sbs-anim-keyframes');
+		generatedSBSKeyframe.textContent = generatedKeyframe;
+		document.head.insertAdjacentElement('beforeend', generatedSBSKeyframe);
+	} else if (generatedSBSKeyframe.textContent !== generatedKeyframe) {
+		generatedSBSKeyframe.textContent = generatedKeyframe;
+	}
 }
 
 /**
  * combine objects
  *
- * @param {object} steps - steps obj
- * @param {object} keyframes - keyframes obj
- * @param {object} keyframesOpts - keyframes option obj
+ * @param { animatedStepToElement[]} steps - steps obj
+ * @param {{
+ *   styles: stepStyles,
+ *   time: number,
+ *   ease:  '' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bounceFin' | undefined
+ * }[]} keyframes - keyframes obj array
+ * @param {{
+ *   timeDuration: number
+ * }} keyframesOpts - object with all time duration
+ * @param {Boolean} isOpacityAnimation
  */
-function t_animateSbs__generateKeyframes__combineObjects(steps, keyframes, keyframesOpts) {
-	for (var j = 0; j < steps.length; j++) {
-		var step = steps[j];
+function t_animationSBS__generateKeyframes__combineObjects(steps, keyframes, keyframesOpts, isOpacityAnimation) {
+	steps.forEach(function (step, i) {
 		var keyframe = {};
-		keyframe.styles = step.styles;
+		keyframe.styles = isOpacityAnimation ? {opacity: step.styles.opacity} : step.styles;
 		keyframe.time = step.time * 1 || 0;
-		if (j !== (steps.length - 1)) {
-			keyframe.ease = steps[j + 1].ease;
-		}
+		if (i !== steps.length - 1) keyframe.ease = steps[i + 1].ease;
 		keyframes.push(keyframe);
 		keyframesOpts.timeDuration += keyframe.time;
-	}
+	});
 }
 
 /**
  * correct frames
  *
- * @param {object} keyframes - keyframes obj
+ * @param {{
+ *   styles: stepStyles,
+ *   time: number,
+ *   ease:  '' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bounceFin' | undefined
+ * }[]} keyframes - keyframes obj array
  */
-function t_animateSbs__generateKeyframes__correctFrames(keyframes) {
-	for (var k = 0; k < keyframes.length; k++) {
-		var keyframe = keyframes[k];
-		var isLast = (k === keyframes.length - 1);
-		var isFirst = (k === 0);
-		if (!isLast) {
-			var nextKeyframe = keyframes[k + 1];
-		}
-		if (!isFirst) {
-			var prevKeyframe = keyframes[k - 1];
-		}
+function t_animationSBS__generateKeyframes__correctFrames(keyframes) {
+	keyframes.forEach(function (keyframe, i) {
+		var isLast = i === keyframes.length - 1;
+		var isFirst = i === 0;
+		var nextKeyframe = !isLast ? keyframes[i + 1] : null;
+		var prevKeyframe = !isFirst ? keyframes[i - 1] : null;
+
 		for (var style in keyframe.styles) {
 			if (!isFirst && !(style in prevKeyframe.styles)) {
-				t_animateSbs__generateKeyframes__addStyleToKeyframe(keyframe, prevKeyframe, style, 0);
+				t_animationSBS__generateKeyframes__addStyleToKeyframe(keyframe, prevKeyframe, style, 0);
 			}
-			
 			if (!isLast) {
 				if (!(style in nextKeyframe.styles)) {
-					t_animateSbs__generateKeyframes__addStyleToKeyframe(keyframe, nextKeyframe, style, 1);
+					t_animationSBS__generateKeyframes__addStyleToKeyframe(keyframe, nextKeyframe, style, 1);
 				} else if (style === 'moveX' || style === 'moveY' || style === 'rotate') {
-					t_animateSbs__generateKeyframes__recalculateValue(keyframe, nextKeyframe, style);
+					t_animationSBS__generateKeyframes__recalculateValue(keyframe, nextKeyframe, style);
 				}
 			}
 		}
-	}
+	});
 }
 
 /**
  * add styles to keyframe
  *
- * @param {object} keyframe - current keyframe
- * @param {object} changingKeyFrame - current keyframe
+ * @param {{
+ *   styles: stepStyles,
+ *   time: number,
+ *   ease:  '' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bounceFin' | undefined
+ * }} keyframe - current keyframe
+ * @param {{
+ *   styles: stepStyles,
+ *   time: number,
+ *   ease:  '' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bounceFin' | undefined
+ * }} changingKeyFrame - prev/next keyframe
  * @param {string} style - style
- * @param {number} state - state
+ * @param {0 | 1} state - state - 0 for prev keyframe, 1 - for next keyframe
  */
-function t_animateSbs__generateKeyframes__addStyleToKeyframe(keyframe, changingKeyFrame, style, state) {
+function t_animationSBS__generateKeyframes__addStyleToKeyframe(keyframe, changingKeyFrame, style, state) {
 	if (style === 'blur' || style === 'rotate' || style === 'moveX' || style === 'moveY') {
-		changingKeyFrame.styles[style] = (state === 0) ? 0 : keyframe.styles[style];
+		changingKeyFrame.styles[style] = state === 0 ? 0 : keyframe.styles[style];
 	}
 	if (style === 'opacity' || style === 'scaleX' || style === 'scaleY') {
-		changingKeyFrame.styles[style] = (state === 0) ? 1 : keyframe.styles[style];
+		changingKeyFrame.styles[style] = state === 0 ? 1 : keyframe.styles[style];
 	}
 }
 
 /**
  * recalculate value
  *
- * @param {object} keyframe - current keyframe
- * @param {object} nextKeyframe - next keyframe
+ * @param {{
+ *   styles: stepStyles,
+ *   time: number,
+ *   ease:  '' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bounceFin' | undefined
+ * }} keyframe - current keyframe
+ * @param {{
+ *   styles: stepStyles,
+ *   time: number,
+ *   ease:  '' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bounceFin' | undefined
+ * }} nextKeyframe - next keyframe
  * @param {string} style - style
  */
-function t_animateSbs__generateKeyframes__recalculateValue(keyframe, nextKeyframe, style) {
+function t_animationSBS__generateKeyframes__recalculateValue(keyframe, nextKeyframe, style) {
 	switch (style) {
 		case 'rotate':
-			nextKeyframe.styles.rotate = keyframe.styles.rotate * 1 + nextKeyframe.styles.rotate * 1;
+			nextKeyframe.styles.rotate += keyframe.styles.rotate;
 			break;
 		case 'moveX':
-			nextKeyframe.styles.moveX = keyframe.styles.moveX * 1 + nextKeyframe.styles.moveX * 1;
+			nextKeyframe.styles.moveX += keyframe.styles.moveX;
 			break;
 		case 'moveY':
-			nextKeyframe.styles.moveY = keyframe.styles.moveY * 1 + nextKeyframe.styles.moveY * 1;
+			nextKeyframe.styles.moveY += keyframe.styles.moveY;
 	}
 }
 
 /**
  * get percent
  *
- * @param {object[]} keyframes - list of keyframes
- * @param {object} keyframesOpts - keyframe options
+ * @param {{
+ *   styles: stepStyles,
+ *   time: number,
+ *   ease:  '' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bounceFin' | undefined,
+ *   percent: number | undefined
+ * }[]} keyframes - keyframes obj array
+ * @param {{
+ *   timeDuration: number
+ * }} keyframesOpts - object with all time duration
  */
-function t_animateSbs__generateKeyframes__countPercent(keyframes, keyframesOpts) {
+function t_animationSBS__generateKeyframes__countPercent(keyframes, keyframesOpts) {
 	for (var j = 0; j < keyframes.length; j++) {
 		var keyframe = keyframes[j];
+		var keyframePercentFloating;
 		if (j === 0) {
 			// first keyframe
-			keyframe.percent = keyframesOpts.timeDuration === 0 ? 0 :
-				parseFloat(parseFloat((keyframe.time / keyframesOpts.timeDuration) * 100).toFixed(2));
-		} else if (j === (keyframes.length - 1)) {
+			if (keyframesOpts.timeDuration === 0) {
+				keyframe.percent = 0;
+			} else {
+				keyframePercentFloating = ((100 * keyframe.time) / keyframesOpts.timeDuration).toFixed(2);
+				keyframe.percent = parseInt(keyframePercentFloating, 10);
+			}
+		} else if (j === keyframes.length - 1) {
 			// last keyframe
 			keyframe.percent = 100;
 		} else {
 			// keyframes between first and last
 			var prevPercent = keyframes[j - 1].percent;
-			keyframe.percent = keyframesOpts.timeDuration === 0 ? 0 :
-				parseFloat(parseFloat((keyframe.time / keyframesOpts.timeDuration) * 100 + prevPercent)
-					.toFixed(2));
+			if (keyframesOpts.timeDuration === 0) {
+				keyframe.percent = 0;
+			} else {
+				keyframePercentFloating = ((100 * keyframe.time) / keyframesOpts.timeDuration + prevPercent).toFixed(2);
+				if (parseInt(keyframePercentFloating, 10) === 100 && j === keyframes.length - 2 && j !== 0) {
+					continue;
+				}
+				keyframe.percent = parseInt(keyframePercentFloating, 10);
+			}
 			if (keyframe.percent === prevPercent) {
 				keyframe.percent += 1;
 			}
@@ -516,15 +848,18 @@ function t_animateSbs__generateKeyframes__countPercent(keyframes, keyframesOpts)
 }
 
 /**
- * correct opacity on first step
+ * making element transparent on first step
  *
- * @param {HTMLElement} el - current element
- * @param {{time, styles}[]} keyframes - list of obj keyframes
+ * @param {AnimatedHTML} el - current element
+ * @param {{
+ *   styles: stepStyles,
+ *   time: number,
+ *   ease:  '' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bounceFin' | undefined
+ * }[]} keyframes - keyframes obj array
  */
-function t_animateSbs__generateKeyframes__correctOpacityOnFirstStep(el, keyframes) {
-	// workaround for making element transparent on first step
-	var firstKeyframe = keyframes[1];
-	if (firstKeyframe && firstKeyframe.time === 0 && firstKeyframe.styles.opacity === 0) {
+function t_animationSBS__generateKeyframes__correctOpacityOnFirstStep(el, keyframes) {
+	var afterFirstKeyframe = keyframes[1];
+	if (afterFirstKeyframe && afterFirstKeyframe.time === 0 && afterFirstKeyframe.styles.opacity === 0) {
 		var animatedWrapper = el ? el.querySelector('.tn-atom__sbs-anim-wrapper') : null;
 		if (animatedWrapper) {
 			animatedWrapper.style.opacity = '0';
@@ -534,38 +869,49 @@ function t_animateSbs__generateKeyframes__correctOpacityOnFirstStep(el, keyframe
 }
 
 /**
- * @param {{changes, percent}[]} keyframes - list of objects keyframes
+ * set animation steps in percents
+ *
+ * @param {AnimatedHTML} el - currentElement
+ * @param {{
+ *   styles: stepStyles,
+ *   time: number,
+ *   ease: '' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bounceFin' | undefined,
+ *   percent: number,
+ *   changes: string | undefined
+ * }[]} keyframes - keyframes obj array (percents set in t_animationSBS__generateKeyframes__countPercent())
  * @returns {string} - keyframes str
  */
-function t_animateSbs__generateKeyframes__getTxtStyles(keyframes) {
-	
+function t_animationSBS__generateKeyframes__getTxtStyles(el, keyframes) {
 	var keyframesStr = '';
-	for (var j = 0; j < keyframes.length; j++) {
-		if (typeof keyframes[j].changes === 'undefined') {
-			keyframes[j].changes = t_animateSbs__generateKeyframes__getFrameChanges(keyframes[j]);
-		}
-		keyframesStr += keyframes[j].percent + '% {' + keyframes[j].changes + '}\n';
-	}
+	keyframes.forEach(function (keyframe) {
+		if (!keyframe.changes) keyframe.changes = t_animationSBS__generateKeyframes__getFrameChanges(el, keyframe);
+		keyframesStr += typeof keyframe.percent === 'number' ? keyframe.percent + '% {' + keyframe.changes + '}\n' : '';
+	});
 	return keyframesStr;
 }
 
 /**
- * @param {object} keyframe - current keyframe
+ * @param {AnimatedHTML} el - currentElement
+ * @param {{
+ *   styles: stepStyles,
+ *   time: number,
+ *   ease: '' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bounceFin' | undefined,
+ *   percent: number,
+ *   changes: string | undefined
+ * }} keyframe - keyframes obj
  * @returns {string} - styles
  */
-function t_animateSbs__generateKeyframes__getFrameChanges(keyframe) {
+function t_animationSBS__generateKeyframes__getFrameChanges(el, keyframe) {
 	var stepChanges = '';
 	var transformChanges = '';
 	var scaleChanges = {x: 1, y: 1, changed: false};
-	
+	var zoomValue = window.t_animationSBS__isOnlyScalable ? t_animationSBS__getZoom(el) : 1;
+
 	for (var style in keyframe.styles) {
 		switch (style) {
 			case 'opacity':
 				stepChanges += 'opacity:' + keyframe.styles.opacity + ';';
 				break;
-			// case 'blur':
-			//     stepChanges += 'filter:blur(' + keyframe.styles.blur + 'px);';
-			//     break;
 			case 'scaleX':
 				scaleChanges.x = keyframe.styles.scaleX;
 				scaleChanges.changed = true;
@@ -575,25 +921,25 @@ function t_animateSbs__generateKeyframes__getFrameChanges(keyframe) {
 				scaleChanges.changed = true;
 				break;
 			case 'moveX':
-				transformChanges += 'translateX(' + keyframe.styles.moveX + 'px)';
+				transformChanges += 'translateX(' + keyframe.styles.moveX * zoomValue + 'px)';
 				break;
 			case 'moveY':
-				transformChanges += 'translateY(' + keyframe.styles.moveY + 'px)';
+				transformChanges += 'translateY(' + keyframe.styles.moveY * zoomValue + 'px)';
 				break;
 			case 'rotate':
 				transformChanges += 'rotate(' + keyframe.styles.rotate + 'deg)';
 				break;
 		}
 	}
-	
+
 	if (scaleChanges.changed === true) {
 		transformChanges += 'scale(' + scaleChanges.x + ',' + scaleChanges.y + ')';
 	}
-	
+
 	if (transformChanges !== '') {
 		stepChanges += 'transform:' + transformChanges + ';';
 	}
-	
+
 	if (typeof keyframe.ease !== 'undefined') {
 		stepChanges += 'animation-timing-function:';
 		switch (keyframe.ease) {
@@ -613,618 +959,556 @@ function t_animateSbs__generateKeyframes__getFrameChanges(keyframe) {
 				stepChanges += 'linear;';
 		}
 	}
-	
 	return stepChanges;
 }
 
-
-//TODO unused function
-function t_animateSbs__generateKeyframes__reverseObj(keyframes) {
-	var reversed = [];
-	for (var i = (keyframes.length - 1); i >= 0; i--) {
-		var frame = {
-			percent: (100 - keyframes[i].percent),
-			changes: keyframes[i].changes,
-		};
-		reversed.push(frame);
-	}
-	return reversed;
-}
-
 /**
- * change element
+ * get final css
  *
- * @param {HTMLElement} el - current element
- * @param {object} elState - element state
+ * @param {AnimatedHTML} animatedHTML - current element
+ * @param {{timeDuration:number}} keyframesOpts - options
+ * @param {string} keyframesStr - keyframes string
+ * @returns {string} - css value
  */
-function t_animateSbs__triggerScrollAnim__changeEl(el, elState) {
-	var zoomValue = t_animationSbs__getZoom(el);
-	if (t_animationSbs__isOnlyScalableElem()) {
-		zoomValue = 1 / zoomValue;
+function t_animationSBS__generateKeyframes__getFinalCss(animatedHTML, keyframesOpts, keyframesStr) {
+	var animStuff = '';
+	var elementAnimationName = 'sbs-anim-' + animatedHTML.uniqueID;
+	var selector = '.t-sbs-anim_started #' + animatedHTML.uniqueID;
+	var isES6Support = typeof Symbol !== 'undefined';
+
+	var duration = keyframesOpts.timeDuration === 0 ? 0.00001 : keyframesOpts.timeDuration;
+	if (isES6Support) {
+		animStuff += `${selector} {animation: ${elementAnimationName} ${duration}s`;
+	} else {
+		animStuff += selector + ' {\nanimation: ' + elementAnimationName + ' ' + duration + 's';
 	}
-	if (elState.fix === true && el.wrapperEl && el.wrapperEl.style.position !== 'fixed') {
-		var top = el.triggerOffset - elState.prevUnfixedDist;
-		el.wrapperEl.style.top = top + 'px';
-		el.wrapperEl.style.position = 'fixed';
-		
-		// workaround for Safari
-		// move z-index from parent elem to fixed tn-atom__sbs-anim-wrapper,
-		// cause Safari doesn't render properly fixed element inside absolute positioned parent with
-		// z-index
-		
-		if (el.zIndexVal) {
-			el.wrapperEl.style.zIndex = el.zIndexVal;
-		}
+
+	if (animatedHTML.loop === 'loop') animStuff += ' infinite';
+
+	//Fix scroll animation flickering in safari
+	animStuff += window.t_animationSBS__isSafari ? ' linear 0.000001s' : ' linear';
+	if (animatedHTML.loop !== 'loop') animStuff += ' forwards';
+
+	if (isES6Support) {
+		animStuff += `;backface-visibility: hidden;} @keyframes ${elementAnimationName} {${keyframesStr}}`;
+	} else {
+		animStuff +=
+			';\nbackface-visibility: hidden;\n}\n\n@keyframes ' +
+			elementAnimationName +
+			' {\n' +
+			keyframesStr +
+			'}\n\n';
 	}
-	if (elState.fix === false && el.wrapperEl && el.wrapperEl.style.position === 'fixed') {
-		el.wrapperEl.style.position = '';
-		el.wrapperEl.style.top = '';
-		el.wrapperEl.style.zIndex = '';
-		
-		if (el.zIndexVal) {
-			el.style.zIndex = el.zIndexVal;
-		}
-	}
-	if (elState.opacity !== null && el.wrapperEl) {
-		el.wrapperEl.style.opacity = elState.opacity;
-	}
-	
-	// if (elState.blur !== null) {
-	//  el.wrapperEl.css("filter","blur("+elState.blur+"px)");
-	//  }
-	
-	var trVal = '';
-	if (elState.translateX) {
-		var translateXValue = elState.translateX;
-		if (t_animationSbs__isOnlyScalableElem()) translateXValue = translateXValue / zoomValue;
-		trVal += 'translateX(' + translateXValue + 'px)';
-	}
-	
-	if (elState.translateY !== 0 || elState.fixedShiftY !== 0) {
-		if (t_animationSbs__isOnlyScalableElem()) {
-			trVal += 'translateY(' + (elState.translateY + elState.fixedShiftY) + 'px)';
-		} else {
-			trVal += 'translateY(' + (elState.translateY / zoomValue + elState.fixedShiftY / zoomValue) +
-				'px)';
-		}
-	}
-	if (elState.scaleX !== 1 || elState.scaleY !== 1) {
-		trVal += 'scale(' + elState.scaleX + ',' + elState.scaleY + ')';
-	}
-	if (elState.rotate !== 0) {
-		trVal += 'rotate(' + elState.rotate + 'deg)';
-	}
-	if (el.wrapperEl) {
-		el.wrapperEl.style.transform = trVal;
-		if (trVal !== '') {
-			el.wrapperEl.style.transform = trVal;
-		} else {
-			el.wrapperEl.style.transform = 'scale(1)';
-		}
-	}
+	return animStuff;
 }
 
 /**
- * calculate style
+ * generate keyframes (get reverse animation)
  *
- * @param {object} elState - current element state
- * @param {object} curStep - current step
- * @param {number} percentage - percents
- * @returns {void}
+ * @param {AnimatedHTML} animatedHTML - current element
+ * @returns {string} - string of selectors
  */
-function t_animateSbs__triggerScrollAnim__calcStyle(elState, curStep, percentage) {
-	if (curStep.styles.fix === true && curStep.state === 'started') {
-		elState.fix = true;
-		elState.fixedShiftY = 0;
-	}
-	if (curStep.styles.fix === true && curStep.state === 'finished') {
-		elState.fix = false;
-		elState.fixedShiftY += curStep.dist * 1;
-	}
-	if (curStep.styles.fix === true && curStep.state === 'unactive') {
-		if (curStep.index > 0 && elState.fix === true) {
-			return;
-		}
-		elState.fix = false;
-	}
-	
-	elState.opacity += percentage * (curStep.styles.opacity - elState.opacity);
-	elState.blur += percentage * (curStep.styles.blur - elState.blur);
-	elState.translateX += percentage * curStep.styles.moveX;
-	elState.translateY += percentage * curStep.styles.moveY;
-	elState.scaleX += percentage * (curStep.styles.scaleX - elState.scaleX);
-	elState.scaleY += percentage * (curStep.styles.scaleY - elState.scaleY);
-	elState.rotate += percentage * curStep.styles.rotate;
+function t_animationSBS__generateKeyframes__getReverseAnim(animatedHTML) {
+	var elementID = animatedHTML.getAttribute('data-elem-id');
+	var recordID = animatedHTML.closest('.t-rec') ? animatedHTML.closest('.t-rec').getAttribute('id') : '';
+	var animStuff = '';
+	animStuff += '#' + recordID + ' ';
+	animStuff += '[data-elem-id="' + elementID + '"].t-sbs-anim_started.t-sbs-anim_reversed .tn-atom__sbs-anim-wrapper';
+	animStuff += '{\n-webkit-animation-direction: reverse;\nanimation-direction: reverse;\n}\n\n';
+
+	return animStuff;
 }
 
 /**
- * get options publish mode
  *
- * @param {HTMLElement} el - current element
- * @returns {string | void} - attr or undefined if data-animate-mobile !== y
+ * @param {HTMLElement | AnimatedHTML} el - current element
+ * @param {string} mode - edit or published
+ * @param {string | null} value - search value
+ * @returns {string} - founded attribute
  */
-function t_animateSbs__getOptsPublishMode(el) {
-	var opts;
-	var viewportWidth = window.innerWidth;
-	
-	if (viewportWidth >= 1200) {
-		return el.getAttribute('data-animate-sbs-opts');
-	}
-	
-	if (el.getAttribute('data-animate-mobile') !== 'y') return;
-	
-	if (viewportWidth >= 960) {
-		opts = el.getAttribute('data-animate-sbs-opts-res-960');
-		if (!opts) opts = el.getAttribute('data-animate-sbs-opts');
-		return opts;
-	}
-	if (viewportWidth >= 640) {
-		opts = el.getAttribute('data-animate-sbs-opts-res-640');
-		if (!opts) opts = el.getAttribute('data-animate-sbs-opts-res-960');
-		if (!opts) opts = el.getAttribute('data-animate-sbs-opts');
-		return opts;
-	}
-	if (viewportWidth >= 480) {
-		opts = el.getAttribute('data-animate-sbs-opts-res-480');
-		if (!opts) opts = el.getAttribute('data-animate-sbs-opts-res-640');
-		if (!opts) opts = el.getAttribute('data-animate-sbs-opts-res-960');
-		if (!opts) opts = el.getAttribute('data-animate-sbs-opts');
-		return opts;
-	}
-	if (viewportWidth >= 320) {
-		opts = el.getAttribute('data-animate-sbs-opts-res-320');
-		if (!opts) opts = el.getAttribute('data-animate-sbs-opts-res-480');
-		if (!opts) opts = el.getAttribute('data-animate-sbs-opts-res-640');
-		if (!opts) opts = el.getAttribute('data-animate-sbs-opts-res-960');
-		if (!opts) opts = el.getAttribute('data-animate-sbs-opts');
-		return opts;
-	}
-}
+function t_animationSBS__getAnimOptions(el, mode, value) {
+	if (!el) return '';
+	var attributeList = ['sbs', 'opts'];
+	if (!value) value = mode === 'edit' ? attributeList.join('') : attributeList.join('-');
+	var preffix = mode === 'edit' ? 'field' : 'animate';
+	var postfix = mode === 'edit' ? '-value' : '';
+	var resolution = mode === 'edit' ? window.tn.curResolution : window.innerWidth;
+	var mobileAnimAttribute = mode === 'edit' ? 'data-field-animmobile-value' : 'data-animate-mobile';
+	var isElHasMobileAnimation = el.getAttribute(mobileAnimAttribute) === 'y';
+	var breakpoints = [960, 640, 480, 320];
+	var foundValue;
 
-/**
- * @param {HTMLElement} el - current element
- * @returns {string} - attr value
- */
-function t_animateSbs__getOptsEditMode(el) {
-	var opts;
-	var viewportWidth = window.tn.curResolution;
-	
-	if (viewportWidth >= 1200) {
-		return el.getAttribute('data-field-sbsopts-value');
+	if (resolution >= 1200) {
+		var attribute = 'data-' + preffix + '-' + value + postfix;
+		return el.getAttribute(attribute);
 	}
-	
-	if (viewportWidth >= 960) {
-		opts = el.getAttribute('data-field-sbsopts-res-960-value');
-		if (!opts) opts = el.getAttribute('data-field-sbsopts-value');
-		return opts;
-	}
-	if (viewportWidth >= 640) {
-		opts = el.getAttribute('data-field-sbsopts-res-640-value');
-		if (!opts) opts = el.getAttribute('data-field-sbsopts-res-960-value');
-		if (!opts) opts = el.getAttribute('data-field-sbsopts-value');
-		return opts;
-	}
-	if (viewportWidth >= 480) {
-		opts = el.getAttribute('data-field-sbsopts-res-480-value');
-		if (!opts) opts = el.getAttribute('data-field-sbsopts-res-640-value');
-		if (!opts) opts = el.getAttribute('data-field-sbsopts-res-960-value');
-		if (!opts) opts = el.getAttribute('data-field-sbsopts-value');
-		return opts;
-	}
-	if (viewportWidth >= 320) {
-		opts = el.getAttribute('data-field-sbsopts-res-320-value');
-		if (!opts) opts = el.getAttribute('data-field-sbsopts-res-480-value');
-		if (!opts) opts = el.getAttribute('data-field-sbsopts-res-640-value');
-		if (!opts) opts = el.getAttribute('data-field-sbsopts-res-960-value');
-		if (!opts) opts = el.getAttribute('data-field-sbsopts-value');
-		return opts;
-	}
-}
 
-/**
- * @param {HTMLElement} el - current element
- * @returns {string} - attr
- */
-function t_animateSbs__getTriggetElems(el) {
-	var elements;
-	var viewportWidth = window.innerWidth;
-	
-	if (viewportWidth >= 1200) {
-		return el.getAttribute('data-animate-sbs-trgels');
+	if (!isElHasMobileAnimation && mode !== 'edit') {
+		el.style.transition = 'none';
+		return '';
 	}
-	
-	if (viewportWidth >= 960) {
-		elements = el.getAttribute('data-animate-sbs-trgels-res-960');
-		if (!elements) elements = el.getAttribute('data-animate-sbs-trgels');
-		return elements;
-	}
-	if (viewportWidth >= 640) {
-		elements = el.getAttribute('data-animate-sbs-trgels-res-640');
-		if (!elements) elements = el.getAttribute('data-animate-sbs-trgels-res-960');
-		if (!elements) elements = el.getAttribute('data-animate-sbs-trgels');
-		return elements;
-	}
-	if (viewportWidth >= 480) {
-		elements = el.getAttribute('data-animate-sbs-trgels-res-480');
-		if (!elements) elements = el.getAttribute('data-animate-sbs-trgels-res-640');
-		if (!elements) elements = el.getAttribute('data-animate-sbs-trgels-res-960');
-		if (!elements) elements = el.getAttribute('data-animate-sbs-trgels');
-		return elements;
-	}
-	if (viewportWidth >= 320) {
-		elements = el.getAttribute('data-animate-sbs-trgels-res-320');
-		if (!elements) elements = el.getAttribute('data-animate-sbs-trgels-res-480');
-		if (!elements) elements = el.getAttribute('data-animate-sbs-trgels-res-640');
-		if (!elements) elements = el.getAttribute('data-animate-sbs-trgels-res-960');
-		if (!elements) elements = el.getAttribute('data-animate-sbs-trgels');
-		return elements;
-	}
-}
 
-/**
- * cash elements data
- *
- * @param {object} opts - options
- */
-function t_animateSbs__cashElsData(opts) {
-	var elements = opts.els;
-	opts.triggerElemsAttrName = (opts.mode === 'edit') ?
-		'data-field-sbstrgels-value' :
-		'data-animate-sbs-trgels';
-	
-	for (var i = 0; i < elements.length; i++) {
-		var el = elements[i];
-		var zoomValue = t_animationSbs__getZoom(el);
-		el.state = 'unactive';
-		el.animType = (opts.mode === 'edit') ? el.getAttribute('data-field-sbsevent-value') :
-			el.getAttribute('data-animate-sbs-event');
-		el.changeType = (el.animType === 'scroll') ? 'scroll' : 'time';
-		el.trigger = (opts.mode === 'edit') ? el.getAttribute('data-field-sbstrg-value') :
-			el.getAttribute('data-animate-sbs-trg');
-		el.trigger = (el.trigger) ? el.trigger : 1;
-		el.triggerElems = t_animateSbs__getTriggetElems(el);
-		el.wrapperEl = el.querySelector('.tn-atom__sbs-anim-wrapper');
-		el.steps = [];
-		var stringOpts;
-		stringOpts = (opts.mode === 'edit')
-			? t_animateSbs__getOptsEditMode(el)
-			: t_animateSbs__getOptsPublishMode(el);
-		if (!stringOpts) continue;
-		
-		if (stringOpts.indexOf('fixed') !== -1) {
-			el.zIndexVal = window.getComputedStyle(el).getPropertyValue('z-index');
+	breakpoints.forEach(function (breakpoint, i) {
+		if (resolution < breakpoint || foundValue) return;
+		foundValue = el.getAttribute('data-' + preffix + '-' + value + '-res-' + breakpoint + postfix);
+		if (i > 0 && !foundValue) {
+			var slicedBreakpoints = breakpoints.slice(0, i);
+			slicedBreakpoints.reverse().forEach(function (slicedBreakpoint) {
+				if (foundValue) return;
+				foundValue = el.getAttribute('data-' + preffix + '-' + value + '-res-' + slicedBreakpoint + postfix);
+			});
 		}
-		
-		stringOpts = stringOpts.replace(/'/g, '"');
-		var objSteps = JSON.parse(stringOpts);
-		t_animateSbs__addDelayStepsToStepsArr(objSteps);
-		
-		el.loop = (opts.mode === 'edit') ? el.getAttribute('data-field-sbsloop-value') :
-			el.getAttribute('data-animate-sbs-loop');
-		
-		t_animateSbs__cashElsTopOffset(el, opts);
-		
+	});
+	return foundValue ? foundValue : el.getAttribute('data-' + preffix + '-' + value) || '';
+}
+
+/**
+ * iterate animated elements to set for them necessary options
+ *
+ * @param {animatedObject} animatedObject - options
+ */
+function t_animationSBS__cacheAndSetData(animatedObject) {
+	animatedObject.elements.forEach(function (animatedHTML) {
+		// set to animated element type of animation, and change type method
+		var animTypeAttribute = animatedObject.isEditMode ? 'data-field-sbsevent-value' : 'data-animate-sbs-event';
+		animatedHTML.animType = animatedHTML.getAttribute(animTypeAttribute);
+
+		// get trigger and set it to element
+		var animTriggerAttribute = animatedObject.isEditMode ? 'data-field-sbstrg-value' : 'data-animate-sbs-trg';
+		animatedHTML.trigger = parseFloat(animatedHTML.getAttribute(animTriggerAttribute));
+		if (isNaN(animatedHTML.trigger)) animatedHTML.trigger = 1;
+		animatedHTML.triggerElems = t_animationSBS__getAnimOptions(animatedHTML, 'published', 'sbs-trgels');
+		animatedHTML.wrapperEl = animatedHTML.querySelector('.tn-atom__sbs-anim-wrapper');
+
+		// prettier-ignore
+		var elemAnimSteps = t_animationSBS__getAnimOptions(animatedHTML, animatedObject.isEditMode ? 'edit' : 'published', null);
+
+		// status need to remove innactive element from animated list later
+		animatedHTML.status = elemAnimSteps ? 'active' : 'innactive';
+		if (animatedHTML.status === 'innactive') return;
+
+		//if animation option is not fixed, append z-index value
+		if (elemAnimSteps.indexOf('fixed') !== -1) {
+			animatedHTML.zIndex = window.getComputedStyle(animatedHTML).getPropertyValue('z-index');
+		}
+
+		// in data-attribute we cannot place string with double quotes,
+		// but JSON.parse not work with single quotes. To parse from string
+		// we should replace single quotes with double quotes.
+		elemAnimSteps = elemAnimSteps.replace(/'/g, '"');
+		elemAnimSteps = JSON.parse(elemAnimSteps);
+		t_animationSBS__addDelayToSteps(elemAnimSteps);
+
+		// set loop value:
+		// none - hasn't data-attribute, returns null
+		// loop - 'loop'
+		// no-reverse - 'noreverse'
+		var animLoopAttribute = animatedObject.isEditMode ? 'data-field-sbsloop-value' : 'data-animate-sbs-loop';
+		animatedHTML.loop = animatedHTML.getAttribute(animLoopAttribute);
+
+		// append to element such params as
+		// el.parentRecTopPos - parent absolute top position
+		// el.topOffset - element absolute top pos
+		// el.triggerOffset - trigger, contains topOffset,
+		// and depended on installed start trigger: top/center/bottom
+		t_animationSBS__setAndCacheElTopPos(animatedHTML, animatedObject);
+
+		// append steps from data-attribute to element.steps array
+		var zoomValue = t_animationSBS__getZoom(animatedHTML);
+		animatedHTML.steps = [];
 		var totalUnfixedDist = 0;
-		for (var j = 0; j < objSteps.length; j++) {
-			var curStep = {};
-			curStep.state = 'unactive';
-			curStep.styles = t_animateSbs__getStylesObj(objSteps[j]);
-			
-			if (el.changeType === 'scroll') {
-				curStep.prevUnfixedDist = totalUnfixedDist;
-				curStep.dist = objSteps[j].di * zoomValue;
-				if (curStep.styles.fix === false) {
-					totalUnfixedDist += Number(curStep.dist);
-				}
-				curStep.start = (j === 0) ? el.topOffset : el.steps[j - 1].end;
-				curStep.end = curStep.start + curStep.dist * 1;
+
+		elemAnimSteps.forEach(function (step, i) {
+			var stepObj = {};
+			stepObj.state = 'unactive';
+			stepObj.styles = t_animationSBS__createStepStyles(step);
+
+			if (animatedHTML.animType === 'scroll') {
+				stepObj.prevUnfixedDist = totalUnfixedDist;
+				stepObj.dist = step.di * zoomValue; // step.di - distance in px
+				if (stepObj.styles.fix === false) totalUnfixedDist += stepObj.dist; // stepObj.styles.fix - step.fi === 'fixed'
+				stepObj.start = i === 0 ? animatedHTML.topOffset : animatedHTML.steps[i - 1].end;
+				stepObj.end = stepObj.start + stepObj.dist;
 			} else {
-				curStep.time = objSteps[j].ti;
-				curStep.ease = objSteps[j].ea;
+				stepObj.time = step.ti; // step.ti - duration in ms
+				stepObj.ease = step.ea; // '' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bounceFin'
 			}
-			el.steps.push(curStep);
+
+			animatedHTML.steps.push(stepObj);
+		});
+
+		if (!animatedHTML.wrapperEl.id) t_animationSBS__generateUniqueIDForEl(animatedHTML);
+		t_animationSBS__updateInfoOnImgLoad(animatedHTML, animatedObject);
+		t_animationSBS__updateMoveAndRotateStepsStyles(animatedHTML.steps);
+	});
+
+	// remove all innactive elements from list
+	animatedObject.elements = animatedObject.elements.filter(function (el) {
+		if (el.status === 'innactive') {
+			if (el.wrapperEl) el.wrapperEl.removeAttribute('style');
+			if (el.wrapperEl) el.wrapperEl.style.display = 'table';
+			if (el.wrapperEl) el.wrapperEl.style.width = 'inherit';
+			if (el.wrapperEl) el.wrapperEl.style.height = 'inherit';
 		}
-		
-		t_animateSbs__updateInfoOnImgLoad(el, opts);
-		t_animateSbs__recalcStepsStylesDiff(el.steps);
-	}
+		return el.status !== 'innactive';
+	});
+}
+
+/**
+ * create uniqueID to set selector and animation name for animation @keyframes.
+ * Set uniqueID to wrapperEl id.
+ * Update ID (if they exists) to remove cache in @keyframes in Safari
+ *
+ * @param {AnimatedHTML} animatedHTML
+ */
+function t_animationSBS__generateUniqueIDForEl(animatedHTML) {
+	animatedHTML.uniqueID = Math.floor(Math.random() * Date.now()).toString(36) + performance.now().toString(36);
+	animatedHTML.uniqueID = animatedHTML.uniqueID.replace(/\d/g, '');
+	animatedHTML.uniqueID += Math.floor(Math.random() * 100000).toString(36);
+	animatedHTML.uniqueID = animatedHTML.uniqueID.replace('.', '-');
+	animatedHTML.wrapperEl.id = animatedHTML.uniqueID;
 }
 
 /**
  * update info img onload
  *
- * @param {HTMLElement} el - current element
- * @param {object} opts - options
+ * @param {AnimatedHTML} element - current element
+ * @param {animatedObject} opts - options
  */
-function t_animateSbs__updateInfoOnImgLoad(el, opts) {
-	var images = el.querySelectorAll('img');
-	Array.prototype.forEach.call(images, function (img) {
-		img.addEventListener('load', function () {
-			t_animateSbs__cashElsTopOffset(el, opts);
-			if (el.changeType === 'scroll') {
-				t_animateSbs__updateStepsStartValues(el);
-			}
-		});
-		if (img.complete) {
-			t_animateSbs__cashElsTopOffset(el, opts);
-			if (el.changeType === 'scroll') {
-				t_animateSbs__updateStepsStartValues(el);
-			}
-		}
+function t_animationSBS__updateInfoOnImgLoad(element, opts) {
+	var image = element.querySelector('img');
+	if (!image) return;
+	image.addEventListener('load', function () {
+		t_animationSBS__updateValuesAterIMGLoading(element, opts);
+	});
+	if (image.complete) {
+		t_animationSBS__updateValuesAterIMGLoading(element, opts);
+	}
+}
+
+/**
+ * @param {AnimatedHTML} element - current element
+ * @param {animatedObject} animatedObject - options
+ */
+function t_animationSBS__updateValuesAterIMGLoading(element, animatedObject) {
+	t_animationSBS__setAndCacheElTopPos(element, animatedObject);
+	if (element.animType === 'scroll') t_animationSBS__updateStepsValues(element);
+}
+
+/**
+ * update steps start/end values
+ *
+ * @param {AnimatedHTML} element - current element
+ */
+function t_animationSBS__updateStepsValues(element) {
+	element.steps.forEach(function (step, i) {
+		step.start = i === 0 ? element.topOffset : element.steps[i - 1].end;
+		step.end = step.start + step.dist;
 	});
 }
 
 /**
- * update steps start value
+ * append to element topOffset and parentRecTopPos, or update them.
+ * Used only for animation events in editor:
+ * element on screen - 'intoview'
+ * on scroll - 'scroll'
+ * block on screen - 'blockintoview'
  *
- * @param {HTMLElement} el - current element
- */
-function t_animateSbs__updateStepsStartValues(el) {
-	for (var j = 0; j < el.steps.length; j++) {
-		var curStep = el.steps[j];
-		curStep.start = (j === 0) ? el.topOffset : el.steps[j - 1].end;
-		curStep.end = curStep.start + curStep.dist * 1;
-	}
-}
-
-/**
- * @param {HTMLElement} el - current element
- * @param {object} opts - options
- */
-function t_animateSbs__cashElsTopOffset(el, opts) {
-	if ((el.animType === 'scroll' || el.animType === 'intoview' || el.animType === 'blockintoview') &&
-		opts.mode === 'publish') {
-		var elTopPos = parseInt(el.style.top);
-		var elRecParent = el.closest('.r');
-		var recTopOffset = elRecParent ? elRecParent.getBoundingClientRect().top + window.pageYOffset :
-			0;
-		el.blockTopOffset = recTopOffset;
-		el.topOffset = recTopOffset + elTopPos;
-		t_animateSbs__getElTrigger(el);
-	}
-}
-
-/**
- * add delay to steps
+ * Not for click/hover triggers.
  *
- * @param {object[]} objSteps - steps
+ * @param {AnimatedHTML} el - current element
+ * @param {animatedObject} animatedObject - options
  */
-function t_animateSbs__addDelayStepsToStepsArr(objSteps) {
-	for (var j = 0; j < objSteps.length; j++) {
-		var step = objSteps[j];
-		if ((!step.dd || step.dd === '0') && (!step.dt || step.dt === '0')) continue;
-		
-		// duplicate previous step to emulate delay for animation
-		var prevStep = (j !== 0) ? t_animateSbs__cloneStep(objSteps[j - 1]) : {
-			'mx': '0',
-			'my': '0',
-			'sx': '1',
-			'sy': '1',
-			'op': '1',
-			'ro': '0',
-			'bl': '0',
-			'ea': '',
-		};
-		
-		if (typeof step.dt !== 'undefined') {
-			prevStep.ti = step.dt;
-		} else {
-			prevStep.di = step.dd;
-		}
-		
-		objSteps.splice(j, 0, prevStep);
-		j++;
+function t_animationSBS__setAndCacheElTopPos(el, animatedObject) {
+	var zoomValue = t_animationSBS__getZoom(el);
+	var animTypeList = ['scroll', 'intoview', 'blockintoview'];
+	var isNotContainsNeedAnimTypes = animTypeList.every(function (animType) {
+		return el.animType !== animType;
+	});
+	if (animatedObject.isEditMode || isNotContainsNeedAnimTypes) return;
+	var elTopPos = parseInt(el.style.top, 10);
+
+	// for animation type 'element on Screen' or 'on Scroll' need update
+	// top position with scale in autoscaled zeroblock
+	if ((el.animType === 'scroll' || el.animType === 'intoview') && !window.t_animationSBS__isOnlyScalable) {
+		elTopPos *= zoomValue;
 	}
+
+	var elRecParent = el.closest('.r');
+	var recTopOffset = elRecParent ? elRecParent.getBoundingClientRect().top + window.pageYOffset : 0;
+	var recPaddingTop = elRecParent ? parseInt(elRecParent.style.paddingTop, 10) || 0 : 0;
+	el.parentRecTopPos = recTopOffset;
+	el.topOffset = recTopOffset + elTopPos + recPaddingTop;
+
+	// consider difference from topOffset in scaled wrappers,
+	// because the css scale() property scaled only element, not it's parent (unlike zoom() property)
+	var scaledWrapped = el.querySelector('.tn-atom__scale-wrapper');
+	var isScaled = window.t_animationSBS__isOnlyScalable && scaledWrapped;
+	var difference =
+		el.wrapperEl.getBoundingClientRect().top - (scaledWrapped ? scaledWrapped.getBoundingClientRect().top : 0);
+	if (isScaled && el.wrapperEl && window.getComputedStyle(el.wrapperEl).position !== 'fixed' && difference > 0) {
+		el.scaledDifference = difference;
+	}
+
+	t_animationSBS__setTriggerOffset(el);
 }
 
 /**
- * @param {{mx, my, sx, sy, op, ro, bl, ea, fi}} step - step
- * @returns {object} - new step
+ * Update steps duration, if next step contains delay
+ *
+ * @param {animationStep[]} objSteps - steps
  */
-function t_animateSbs__cloneStep(step) {
+function t_animationSBS__addDelayToSteps(objSteps) {
+	var skippedItem;
+	objSteps.forEach(function (step, i) {
+		// if step not contains delay, leave this iteration
+		if ((!parseInt(step.dd, 10) && !parseInt(step.dt, 10)) || skippedItem === i) return;
+		var prevClonedStep = i !== 0 ? Object.create(objSteps[i - 1]) : null;
+		if (!prevClonedStep) return;
+		var currentDelay = parseInt(step.dd, 10) || parseInt(step.dt, 10);
+		if (typeof prevClonedStep.ti !== 'undefined') prevClonedStep.ti = currentDelay.toString();
+		if (typeof prevClonedStep.di !== 'undefined') prevClonedStep.di = currentDelay.toString();
+		objSteps.splice(i, 0, prevClonedStep);
+		// skip next iteration to perevent duplicate cloned step
+		skippedItem = i + 1;
+	});
+}
+
+/**
+ * update moveX, moveY and rotate values,
+ * according to their difference between prev and next steps
+ *
+ * @param {animatedStepToElement[]} steps - steps
+ */
+function t_animationSBS__updateMoveAndRotateStepsStyles(steps) {
+	var firstStepMoveX = steps[0].styles.moveX;
+	var firstStepMoveY = steps[0].styles.moveY;
+	var firstStepRotate = steps[0].styles.rotate;
+
+	steps.forEach(function (step) {
+		var stepStyle = step.styles;
+		stepStyle.moveX -= firstStepMoveX;
+		firstStepMoveX += stepStyle.moveX;
+		stepStyle.moveY -= firstStepMoveY;
+		firstStepMoveY += stepStyle.moveY;
+		stepStyle.rotate -= firstStepRotate;
+		firstStepRotate += stepStyle.rotate;
+	});
+}
+
+/**
+ * @param {animationStep} step - current step
+ * @returns {stepStyles} - styles
+ */
+function t_animationSBS__createStepStyles(step) {
 	return {
-		mx: step.mx,
-		my: step.my,
-		sx: step.sx,
-		sy: step.sy,
-		op: step.op,
-		ro: step.ro,
-		bl: step.bl,
-		ea: step.ea,
+		moveX: parseInt(step.mx, 10) || 0,
+		moveY: parseInt(step.my, 10) || 0,
+		scaleX: !isNaN(parseFloat(step.sx)) ? parseFloat(step.sx) : 1,
+		scaleY: !isNaN(parseFloat(step.sy)) ? parseFloat(step.sy) : 1,
+		opacity: !isNaN(parseFloat(step.op)) ? parseFloat(step.op) : 1,
+		rotate: parseInt(step.ro, 10) || 0,
+		blur: parseInt(step.bl, 10) || 0,
+		fix: step.fi === 'fixed',
 	};
 }
 
 /**
- * @param {{styles}[]} steps - steps
- */
-function t_animateSbs__recalcStepsStylesDiff(steps) {
-	var sumMoveX = steps[0].styles.moveX;
-	var sumMoveY = steps[0].styles.moveY;
-	var sumRotate = steps[0].styles.rotate;
-	for (var i = 1; i < steps.length; i++) {
-		var curS = steps[i].styles;
-		curS.moveX = curS.moveX - sumMoveX;
-		sumMoveX += curS.moveX;
-		curS.moveY = curS.moveY - sumMoveY;
-		sumMoveY += curS.moveY;
-		curS.rotate = curS.rotate - sumRotate;
-		sumRotate += curS.rotate;
-	}
-}
-
-/**
- * @param {{mx, my, sx, sy, op, ro, bl, ea, fi}} step - step
- * @returns {{moveX, moveY, scaleX, scaleY, opacity, rotate, blur, fix}} - styles
- */
-function t_animateSbs__getStylesObj(step) {
-	var styles = {};
-	styles.moveX = (typeof step.mx != 'undefined') ? step.mx * 1 : 0;
-	styles.moveY = (typeof step.my != 'undefined') ? step.my * 1 : 0;
-	styles.scaleX = (typeof step.sx != 'undefined') ? step.sx * 1 : 1;
-	styles.scaleY = (typeof step.sy != 'undefined') ? step.sy * 1 : 1;
-	styles.opacity = (typeof step.op != 'undefined') ? step.op * 1 : 1;
-	styles.rotate = (typeof step.ro != 'undefined') ? step.ro * 1 : 0;
-	styles.blur = (typeof step.bl != 'undefined') ? step.bl * 1 : 0;
-	styles.fix = (typeof step.fi != 'undefined' && step.fi === 'fixed');
-	return styles;
-}
-
-/**
- * @param {HTMLElement & {triggerOffset, topOffset, animType, blockTopOffset, trigger}} el -
- *   current element
- */
-function t_animateSbs__getElTrigger(el) {
-	var winHeight = window.innerHeight;
-	var zoomValue = 1;
-	if (t_animationSbs__isOnlyScalableElem()) {
-		zoomValue = t_animationSbs__getZoom(el);
-	}
-	el.triggerOffset = el.getAttribute('data-animate-sbs-trgofst') * zoomValue;
-	el.triggerOffset = el.triggerOffset ? Number(el.triggerOffset) : 0;
-	if (+el.trigger === 0.5) {
-		el.triggerOffset += winHeight / 2;
-		if ((el.animType === 'intoview' || el.animType === 'scroll') && el.triggerOffset >
-			el.topOffset && el.triggerOffset <= winHeight / 2) {
-			el.triggerOffset = el.topOffset;
-		}
-		if (el.animType === 'blockintoview' && el.triggerOffset > el.blockTopOffset &&
-			el.triggerOffset <= winHeight / 2) {
-			el.triggerOffset = el.blockTopOffset;
-		}
-	}
-	if (+el.trigger === 1) {
-		el.triggerOffset += winHeight;
-		if ((el.animType === 'intoview' || el.animType === 'scroll') && el.triggerOffset >
-			el.topOffset && el.triggerOffset <= winHeight) {
-			el.triggerOffset = el.topOffset;
-		}
-		if (el.animType === 'blockintoview' && el.triggerOffset > el.blockTopOffset &&
-			el.triggerOffset <= winHeight) {
-			el.triggerOffset = el.blockTopOffset;
-		}
-	}
-}
-
-/**
- * trigger time animation
+ * updated or new parameter triggerOffset depend on 'start trigger' in animation options:
+ * on window top; on window bottom; on window center.
  *
- * @param {object} opts - options
+ * @param {AnimatedHTML} el - current element
  */
-function t_animateSbs__triggerTimeAnim(opts) {
-	var elsIntoview = Array.prototype.filter.call(opts.els, function (el) {
-		return (el.getAttribute('data-animate-sbs-event') === 'intoview' ||
-			el.getAttribute('data-animate-sbs-event') === 'blockintoview');
-	});
-	t_animateSbs__checkIntoviewEls(opts, elsIntoview);
-	window.addEventListener('scroll', t_throttle(function () {
-		t_animateSbs__checkIntoviewEls(opts, elsIntoview);
-	}, 200));
-	t_animateSbs__onActions__initClick(opts);
-	t_animateSbs__onActions__initHover(opts);
+function t_animationSBS__setTriggerOffset(el) {
+	var winHeight = window.innerHeight;
+	var zoomValue = t_animationSBS__getZoom(el);
+
+	el.triggerOffset = Number(el.getAttribute('data-animate-sbs-trgofst'));
+	if (window.t_animationSBS__isOnlyScalable || el.animType === 'scroll') el.triggerOffset *= zoomValue;
+	if (!el.triggerOffset) el.triggerOffset = 0;
+	if (el.trigger === 0.5 || el.trigger === 1) {
+		el.triggerOffset += winHeight * el.trigger;
+		if (
+			(el.animType === 'intoview' || el.animType === 'scroll') &&
+			el.triggerOffset > el.topOffset &&
+			el.triggerOffset <= winHeight * el.trigger
+		) {
+			el.triggerOffset = el.topOffset;
+		}
+		if (
+			el.animType === 'blockintoview' &&
+			el.triggerOffset > el.parentRecTopPos &&
+			el.triggerOffset <= winHeight * el.trigger
+		) {
+			el.triggerOffset = el.parentRecTopPos;
+		}
+	}
 }
 
 /**
- * @param {object} opts - options
+ * create triggers to such type animation events as:
+ * 1. element on Screen
+ * 2. block on Screen
+ * 3. click
+ * 4. hover
+ *
+ * @param {animatedObject} animatedObject - options
+ * @param {AnimatedHTML[]} elsIntoview - filtered AnimatedHTML, which has event from editor
+ * 'element on Screen' - 'intoview' or
+ * 'block on Screen' - 'blockintoview'.
  */
-function t_animateSbs__onActions__initClick(opts) {
-	var elsClick = Array.prototype.filter.call(opts.els, function (el) {
+function t_animationSBS__triggerNoScrollAnimation(animatedObject, elsIntoview) {
+	t_animationSBS__updateIntoViewElsState(animatedObject, elsIntoview);
+	window.addEventListener(
+		'scroll',
+		t_throttle(function () {
+			t_animationSBS__updateIntoViewElsState(animatedObject, elsIntoview);
+		}, 200)
+	);
+	t_animationSBS__initClickTriggers(animatedObject);
+	t_animationSBS__initHoverTriggers(animatedObject);
+}
+
+//============================ on action animation: hover and click ============================//
+
+/**
+ * init animation with click
+ *
+ * @param {animatedObject} animatedObject - options
+ */
+function t_animationSBS__initClickTriggers(animatedObject) {
+	var clickedElements = animatedObject.elements.filter(function (el) {
 		return el.getAttribute('data-animate-sbs-event') === 'click';
 	});
-	var elsClickTrgs = {};
-	t_animateSbs__onActions__connectTrgrsWithAnimatedEls(elsClick, elsClickTrgs, 'click');
-	var triggerClickElements = document.querySelectorAll('.js-sbs-anim-trigger_click');
+	if (!clickedElements.length) return;
+	t_animationSBS__connectTriggersWithAnimEls(clickedElements);
+	var triggerClickElements = Array.prototype.slice.call(document.querySelectorAll('.js-sbs-anim-trigger_click'));
+	if (!triggerClickElements.length) return;
+
+	// if element has class .js-sbs-anim-trigger_click, set style cursor: pointer;
+	var clickStyles = document.createElement('style');
+	clickStyles.textContent = '.js-sbs-anim-trigger_click { cursor: pointer; }';
+	document.head.insertAdjacentElement('beforeend', clickStyles);
+
+	// remove old listener, and set new one
 	Array.prototype.forEach.call(triggerClickElements, function (triggerClickElement) {
-		triggerClickElement.style.cursor = 'pointer';
-	});
-	
-	var onClickCallback = function () {
-		var elements = elsClick;
-		if (window.innerWidth < 1200) {
-			Array.prototype.filter.call(elements, function (el) {
-				return el.getAttribute('data-animate-mobile') === 'y';
-			});
-		}
-		var isStarted = elements[0] ? elements[0].classList.contains('t-sbs-anim_started') &&
-			!elements[0].classList.contains('t-sbs-anim_reversed') : null;
-		if (isStarted) {
-			t_animateSbs__onActions__end(elements);
-		} else {
-			t_animateSbs__onActions__start(elements);
-		}
-	};
-	
-	// catch click events on triggers
-	Array.prototype.forEach.call(triggerClickElements, function (triggerClickElement) {
-		triggerClickElement.removeEventListener('click', onClickCallback);
-		triggerClickElement.addEventListener('click', onClickCallback);
+		triggerClickElement.removeEventListener('click', t_animationSBS__initClickCallback);
+		triggerClickElement.addEventListener('click', t_animationSBS__initClickCallback);
 	});
 }
 
 /**
- *
- * @param {object} opts - options
+ * trigger and start animation by click
  */
-function t_animateSbs__onActions__initHover(opts) {
-	var elsHover = Array.prototype.filter.call(opts.els, function (el) {
+function t_animationSBS__initClickCallback() {
+	var targets = this['data-els-to-animate-on-click'];
+
+	// remove click event from .t396__elem and append it for this children
+	if (this.classList.contains('t396__elem')) {
+		this.style.pointerEvents = 'none';
+		var wrapper = this.querySelector('.tn-atom__sbs-anim-wrapper');
+		if (wrapper) wrapper.style.pointerEvents = 'auto';
+		if (wrapper) {
+			wrapper.style.pointerEvents = 'auto';
+		} else {
+			wrapper = this.querySelector('.tn-atom');
+			if (wrapper) wrapper.style.pointerEvents = 'auto';
+		}
+	}
+
+	// check if elements has mobile animation
+	if (window.innerWidth < 1200) {
+		targets = targets.filter(function (target) {
+			return target.getAttribute('data-animate-mobile') === 'y';
+		});
+	}
+	if (!targets.length) return;
+	var isStarted =
+		targets[0].classList.contains('t-sbs-anim_started') && !targets[0].classList.contains('t-sbs-anim_reversed');
+	isStarted ? t_animationSBS__actionOnEnd(targets) : t_animationSBS__actionOnStart(targets);
+}
+
+/**
+ *
+ * @param {animatedObject} animatedObject - options
+ */
+function t_animationSBS__initHoverTriggers(animatedObject) {
+	var hoveredElements = animatedObject.elements.filter(function (el) {
 		return el.getAttribute('data-animate-sbs-event') === 'hover';
 	});
-	var elsHoverTrgs = {};
-	t_animateSbs__onActions__connectTrgrsWithAnimatedEls(elsHover, elsHoverTrgs, 'hover');
-	
-	var onEnterCallBack = function (e) {
-		var elements = e.target['data-els-to-animate-on-hover'];
-		t_animateSbs__onActions__start(elements);
-	};
-	
-	var onLeaveCallBack = function (e) {
-		var elements = e.target['data-els-to-animate-on-hover'];
-		t_animateSbs__onActions__end(elements);
-	};
-	
+	if (!hoveredElements.length) return;
+	t_animationSBS__connectTriggersWithAnimEls(hoveredElements);
+
 	// catch hover events on triggers
 	var triggerHoverElements = document.querySelectorAll('.js-sbs-anim-trigger_hover');
 	Array.prototype.forEach.call(triggerHoverElements, function (triggerHoverElement) {
-		triggerHoverElement.removeEventListener('mouseenter', onEnterCallBack);
-		triggerHoverElement.removeEventListener('mouseleave', onLeaveCallBack);
-		triggerHoverElement.addEventListener('mouseenter', onEnterCallBack);
-		triggerHoverElement.addEventListener('mouseleave', onLeaveCallBack);
+		if ('ontouchend' in document) {
+			// in touch devices mouseenter/mouseleave can override the click event,
+			// to prevent it - use click again
+			triggerHoverElement.removeEventListener('click', t_animationSBS__initHoverTrigger);
+			triggerHoverElement.addEventListener('click', t_animationSBS__initHoverTrigger);
+		} else {
+			triggerHoverElement.removeEventListener('mouseenter', t_animationSBS__initHoverTrigger);
+			triggerHoverElement.removeEventListener('mouseleave', t_animationSBS__initHoverTrigger);
+			triggerHoverElement.addEventListener('mouseenter', t_animationSBS__initHoverTrigger);
+			triggerHoverElement.addEventListener('mouseleave', t_animationSBS__initHoverTrigger);
+		}
 	});
 }
 
 /**
- * @param {array} elements - filtered elements
- * @param {object} trgElsObj - trigger elements object
- * @param {string} type - type
+ * trigger and start animation by hover
  */
-function t_animateSbs__onActions__connectTrgrsWithAnimatedEls(elements, trgElsObj, type) {
-	Array.prototype.forEach.call(elements, function (el) {
-		var idsStr = el.triggerElems;
+function t_animationSBS__initHoverTrigger(e) {
+	var target = e.currentTarget;
+	var targets = e.currentTarget['data-els-to-animate-on-hover'];
+	if (e.type === 'mouseenter') t_animationSBS__actionOnStart(targets);
+	if (e.type === 'mouseleave') t_animationSBS__actionOnEnd(targets);
+	if (e.type === 'click') {
+		t_animationSBS__actionOnStart(targets);
+		// to prevent double-click, need use setTimeout
+		setTimeout(function () {
+			document.addEventListener('click', t_animationSBS__updateClickForHoverTrigger);
+		});
+	}
+	function t_animationSBS__updateClickForHoverTrigger(e) {
+		if (target !== e.target.closest('.t396__elem')) {
+			t_animationSBS__actionOnEnd(targets);
+			document.removeEventListener('click', t_animationSBS__updateClickForHoverTrigger);
+		}
+	}
+}
+
+/**
+ * @param {AnimatedHTML[]} animatedHTMLList - filtered elements
+ */
+function t_animationSBS__connectTriggersWithAnimEls(animatedHTMLList) {
+	var type = animatedHTMLList[0].getAttribute('data-animate-sbs-event');
+	animatedHTMLList.forEach(function (animatedHTML) {
+		var idsStr = animatedHTML.triggerElems;
+		// if animated element hasn't idsStr, its animation will be triggered by the same element
 		if (!idsStr) {
-			var selfTriggerNode = el.querySelector('.tn-atom__sbs-anim-wrapper');
-			selfTriggerNode['data-els-to-animate-on-' + type] = [];
-			selfTriggerNode['data-els-to-animate-on-' + type].push(el);
-			selfTriggerNode.classList.add('js-sbs-anim-trigger_' + type);
+			var selfTriggerNode = animatedHTML.querySelector('.tn-atom__sbs-anim-wrapper');
+			if (selfTriggerNode) selfTriggerNode['data-els-to-animate-on-' + type] = [animatedHTML];
+			if (selfTriggerNode) selfTriggerNode.classList.add('js-sbs-anim-trigger_' + type);
 		} else {
-			var idsArr = idsStr ? idsStr.split(',') : [];
-			var parentArtboard = el.closest('.t396__artboard');
-			var recId = parentArtboard ? parentArtboard.getAttribute('data-artboard-recid') : null;
-			// iterate via all triggers
-			idsArr.forEach(function (id) {
-				var elemUniqueId = recId + id;
-				var elTrigger = document.querySelector('.tn-elem__' + recId + id);
-				// user could add a link to trigger element and delete it
-				// so, we need to check, if it exists
-				if (elTrigger) {
-					// cash links to animated elems in triggers data
-					if (trgElsObj[elemUniqueId] &&
-						trgElsObj[elemUniqueId]['data-els-to-animate-on-' + type]) {
-						trgElsObj[elemUniqueId]['data-els-to-animate-on-' + type].push(el);
-					} else {
-						trgElsObj[elemUniqueId] = elTrigger;
-						trgElsObj[elemUniqueId].classList.add('js-sbs-anim-trigger_' + type);
-						trgElsObj[elemUniqueId]['data-els-to-animate-on-' + type] = [];
-						trgElsObj[elemUniqueId]['data-els-to-animate-on-' + type].push(el);
-					}
+			var triggersIDs = idsStr ? idsStr.split(',') : [];
+			var parentArtboard = animatedHTML.closest('.t396__artboard');
+			var recid = parentArtboard ? parentArtboard.getAttribute('data-artboard-recid') : '';
+
+			triggersIDs.forEach(function (id) {
+				var elemUniqueID = recid + id;
+				var elTrigger = document.querySelector('.tn-elem__' + elemUniqueID);
+				if (!elTrigger) return;
+
+				// to first animated element create array,
+				// which placed all animated els, connected with this trigger
+				if (!elTrigger['data-els-to-animate-on-' + type]) {
+					elTrigger['data-els-to-animate-on-' + type] = [];
+					elTrigger['data-els-to-animate-on-' + type].push(animatedHTML);
+					elTrigger.classList.add('js-sbs-anim-trigger_' + type);
+				} else {
+					elTrigger['data-els-to-animate-on-' + type].push(animatedHTML);
 				}
 			});
 		}
@@ -1232,114 +1516,112 @@ function t_animateSbs__onActions__connectTrgrsWithAnimatedEls(elements, trgElsOb
 }
 
 /**
- * @param {HTMLElement[]} elements - element
+ * @param {AnimatedHTML[]} elements - element
  */
-function t_animateSbs__onActions__start(elements) {
-	Array.prototype.forEach.call(elements, function (el) {
-		if (el.classList.contains('t-sbs-anim_playing')) {
-			el.setAttribute('data-planned-dir', 'play');
-		} else {
-			t_animateSbs__onActions__play(el);
-		}
+function t_animationSBS__actionOnStart(elements) {
+	elements.forEach(function (el) {
+		el.classList.contains('t-sbs-anim_playing')
+			? el.setAttribute('data-planned-dir', 'play')
+			: t_animationSBS__playAnimation(el);
 	});
 }
 
 /**
- * @param {HTMLElement[]} elements - elements
+ * @param {AnimatedHTML[]} elements - elements
  */
-function t_animateSbs__onActions__end(elements) {
-	Array.prototype.forEach.call(elements, function (el) {
+function t_animationSBS__actionOnEnd(elements) {
+	elements.forEach(function (el) {
 		if (el.getAttribute('data-animate-sbs-loop') === 'loop') {
 			// elements with loop animation should stop animation after the and of current iteration
-			el.onanimationiteration = function () {
-				el.classList.remove('t-sbs-anim_started', 't-sbs-anim_playing');
-				this.onanimationiteration = null;
-			};
+			el.addEventListener('animationiteration', t_animationSBS__setIterationAnimation);
 		} else if (el.classList.contains('t-sbs-anim_playing')) {
 			el.setAttribute('data-planned-dir', 'reverse');
 		} else {
-			t_animateSbs__onActions__playReverse(el);
+			t_animationSBS__playReverseAnim(el);
 		}
 	});
 }
 
-/**
- * animation end event
- *
- * @param {HTMLElement} el - current element
- */
-function t_animateSbs__onActions__onAnimationEnd(el) {
-	var depAnimCallback = function () {
-		el.classList.remove('t-sbs-anim_playing');
-		el.removeEventListener('animationend', el['data-callback-dep-anim']);
-		var plannedDirection = el.getAttribute('data-planned-dir');
-		if (plannedDirection === 'play' && el.classList.contains('t-sbs-anim_reversed')) {
-			t_animateSbs__onActions__play(el);
-		} else if (plannedDirection === 'reverse' && !el.classList.contains('t-sbs-anim_reversed')) {
-			t_animateSbs__onActions__playReverse(el);
-		}
-		el.setAttribute('data-planned-dir', '');
-	};
-	
-	el.removeEventListener('animationend', depAnimCallback);
-	el.addEventListener('animationend', depAnimCallback);
-	el['data-callback-dep-anim'] = depAnimCallback;
+function t_animationSBS__setIterationAnimation() {
+	this.classList.remove('t-sbs-anim_started');
+	this.classList.remove('t-sbs-anim_reversed');
+	this.classList.remove('t-sbs-anim_playing');
+	this.removeEventListener('animationiteration', t_animationSBS__setIterationAnimation);
 }
 
 /**
- * get animation time
+ * ending of animation
  *
- * @param {HTMLElement} el - current element
+ * @param {AnimatedHTML} el - current element
+ */
+function t_animationSBS__animationEnd(el) {
+	el.removeEventListener('animationend', t_animationSBS__animationEndingEvent);
+	el.addEventListener('animationend', t_animationSBS__animationEndingEvent);
+	el['data-callback-dep-anim'] = t_animationSBS__animationEndingEvent;
+}
+
+function t_animationSBS__animationEndingEvent() {
+	this.classList.remove('t-sbs-anim_playing');
+	this.removeEventListener('animationend', this['data-callback-dep-anim']);
+	var plannedDirection = this.getAttribute('data-planned-dir');
+	if (plannedDirection === 'play' && this.classList.contains('t-sbs-anim_reversed')) {
+		t_animationSBS__playAnimation(this);
+	} else if (plannedDirection === 'reverse' && !this.classList.contains('t-sbs-anim_reversed')) {
+		t_animationSBS__playReverseAnim(this);
+	}
+	this.setAttribute('data-planned-dir', '');
+}
+
+/**
+ * return the time it takes to complete the full animation cycle
+ *
+ * @param {AnimatedHTML} el - current element
  * @returns {number} - time
  */
-function t_animateSbs__getAnimationTime(el) {
+function t_animationSBS__getAnimationFullTime(el) {
 	var dataAnimateSbsOpts = el.getAttribute('data-animate-sbs-opts');
-	var animateSbsOpts = dataAnimateSbsOpts ?
-		JSON.parse(el.getAttribute('data-animate-sbs-opts').split('\'').join('"')) : [];
-	var time = 0;
-	for (var i = 0; i < animateSbsOpts.length; i++) {
-		var element = animateSbsOpts[i];
-		time += parseInt(element.ti);
-	}
-	return time;
+	if (!dataAnimateSbsOpts) return 0;
+	var animateSbsOpts = JSON.parse(el.getAttribute('data-animate-sbs-opts').split("'").join('"'));
+	return animateSbsOpts.reduce(function (prev, next) {
+		return prev + (parseInt(next.ti, 10) || 0);
+	}, 0);
 }
 
 /**
  * play animation on action
  *
- * @param {HTMLElement} el - current element
+ * @param {AnimatedHTML} el - current element
  */
-function t_animateSbs__onActions__play(el) {
-	el.classList.remove('t-sbs-anim_started', 't-sbs-anim_reversed');
-	t_animateSbs__forceRepaint(el);
-	var animTime = t_animateSbs__getAnimationTime(el);
+function t_animationSBS__playAnimation(el) {
+	el.classList.remove('t-sbs-anim_started');
+	el.classList.remove('t-sbs-anim_reversed');
+	t_animationSBS__forceRepaint(el);
+	var animTime = t_animationSBS__getAnimationFullTime(el);
 	var classListValues = ['t-sbs-anim_started'];
-	if (animTime > 0) {
-		classListValues.push('t-sbs-anim_playing');
-	}
+	if (animTime > 0) classListValues.push('t-sbs-anim_playing');
 	classListValues.forEach(function (className) {
 		el.classList.add(className);
 	});
-	t_animateSbs__onActions__onAnimationEnd(el);
+	t_animationSBS__animationEnd(el);
 }
 
 /**
- * play reverse animation
+ * Play reverse animation.
+ * only for click and hover triggers.
  *
  * @param {HTMLElement} el - current element
  */
-function t_animateSbs__onActions__playReverse(el) {
+function t_animationSBS__playReverseAnim(el) {
 	el.classList.remove('t-sbs-anim_started');
-	t_animateSbs__forceRepaint(el);
-	var animTime = t_animateSbs__getAnimationTime(el);
+	t_animationSBS__forceRepaint(el);
+	var animTime = t_animationSBS__getAnimationFullTime(el);
 	var classListValues = ['t-sbs-anim_started', 't-sbs-anim_reversed'];
-	if (animTime > 0) {
-		classListValues.push('t-sbs-anim_playing');
-	}
+	if (animTime > 0) classListValues.push('t-sbs-anim_playing');
+
 	classListValues.forEach(function (className) {
 		el.classList.add(className);
 	});
-	t_animateSbs__onActions__onAnimationEnd(el);
+	t_animationSBS__animationEnd(el);
 }
 
 /**
@@ -1348,73 +1630,60 @@ function t_animateSbs__onActions__playReverse(el) {
  *
  * @param {HTMLElement} el - current Element
  */
-function t_animateSbs__forceRepaint(el) {
+function t_animationSBS__forceRepaint(el) {
 	el.offsetWidth;
 }
 
+//============================ end of action animation: hover and click ============================//
+
 /**
- * @param {object} opts - options
- * @param {HTMLElement[]} elsIntoview - filterd elements placed in viewport
- * @returns  {void}
+ * @param {animatedObject} animatedObject - options
+ * @param {AnimatedHTML[]} elsIntoView - filtered AnimatedHTML, which has event from editor
+ * 'element on Screen' - 'intoview' or
+ * 'block on Screen' - 'blockintoview'.
  */
-function t_animateSbs__checkIntoviewEls(opts, elsIntoview) {
-	if (elsIntoview && elsIntoview.length) {
-		opts.scrollTop = window.pageYOffset;
-		elsIntoview.filter(function (el) {
-			var trigger = opts.scrollTop + el.triggerOffset;
-			var isAfterStart = el.animType === 'blockintoview' ? trigger >= el.blockTopOffset :
-				trigger >= el.topOffset;
-			if (isAfterStart && !el.classList.contains('t-sbs-anim_started')) {
-				el.classList.add('t-sbs-anim_started');
-				return false;
-			}
-			return true;
+function t_animationSBS__updateIntoViewElsState(animatedObject, elsIntoView) {
+	if (!elsIntoView || !elsIntoView.length) return;
+	animatedObject.scrollTop = window.pageYOffset;
+	elsIntoView.forEach(function (el) {
+		var trigger = animatedObject.scrollTop + el.triggerOffset;
+		var isAfterStart = el.animType === 'blockintoview' ? trigger >= el.parentRecTopPos : trigger >= el.topOffset;
+		// to equal working in edit and published mode find parent as el.closest('.t396').parentElement
+		var parentEl = el.closest('.t396').parentElement;
+		var hiddenClasses = ['t397__off', 't395__off', 't400__off'];
+		var isParentHidden = hiddenClasses.some(function (className) {
+			return parentEl.classList.contains(className);
 		});
-	}
+		if (!isAfterStart || isParentHidden) return;
+		if (!el.classList.contains('t-sbs-anim_started')) el.classList.add('t-sbs-anim_started');
+	});
 }
 
 /**
- * @returns {boolean} - is old ie?
+ * check is old IE. If true, do not start sbs-animation
+ *
+ * @returns {boolean}
  */
-function t_animateParallax__checkOldIE() {
-	var sAgent = window.navigator.userAgent;
-	var Idx = sAgent.indexOf('MSIE');
-	var ieVersion = '';
-	var oldIE = false;
-	if (Idx > 0) {
-		ieVersion = parseInt(sAgent.substring(Idx + 5, sAgent.indexOf('.', Idx)));
-		if (ieVersion === 8 || ieVersion === 9) {
-			oldIE = true;
-		}
-	}
-	return oldIE;
-}
-
-/**
- * @returns {boolean} - is only scalable el
- */
-function t_animationSbs__isOnlyScalableElem() {
-	var isFirefox = navigator.userAgent.search('Firefox') !== -1;
-	// eslint-disable-next-line no-undef
-	var isOpera = (!!window.opr && !!opr.addons) || !!window.opera ||
-		navigator.userAgent.indexOf(' OPR/') >= 0;
-	
-	return isFirefox || isOpera;
+function t_animationSBS__checkOldIE() {
+	var userAgent = window.navigator.userAgent;
+	var iEIndex = userAgent.indexOf('MSIE');
+	if (iEIndex === -1) return false;
+	var ieVersion = parseInt(userAgent.substring(iEIndex + 5, userAgent.indexOf('.', iEIndex)), 10);
+	return ieVersion === 8 || ieVersion === 9 || ieVersion === 10;
 }
 
 /**
  * get zoom value
  *
- * @param {*} el - current element
- * @returns {string} - scale factor
+ * @param {HTMLElement} el - current element
+ * @returns {number} - scale factor
  */
-function t_animationSbs__getZoom(el) {
-	var zoomValue = 1;
+function t_animationSBS__getZoom(el) {
 	var artboard = el.closest('.t396__artboard');
 	if (artboard && artboard.classList.contains('t396__artboard_scale')) {
-		zoomValue = window.tn_scale_factor;
+		return window.tn_scale_factor;
 	}
-	return zoomValue;
+	return 1;
 }
 
 // BELOW FUNCTIONS ARE USED FOR SUPPORT OLD SITES
@@ -1431,7 +1700,7 @@ function t_animateSbs__wrapAtomEls() {
 	Array.prototype.forEach.call(wrappingEls, function (wrappingEl) {
 		var atomElement = wrappingEl.querySelector('.tn-atom');
 		if (atomElement && !atomElement.closest('.tn-atom__sbs-anim-wrapper')) {
-			t_animateSbs__wrapEl(atomElement, 'tn-atom__sbs-anim-wrapper');
+			t_animationSBS__wrapEl(atomElement, 'tn-atom__sbs-anim-wrapper');
 			var elType = wrappingEl.getAttribute('data-elem-type');
 			// getPropertyValue returns border-radius value in px. If it cannot setted, will return '0px'
 			var elBorderRadius = window.getComputedStyle(wrappingEl).getPropertyValue('border-radius');
@@ -1451,46 +1720,50 @@ function t_animateSbs__wrapAtomEls() {
 // eslint-disable-next-line no-unused-vars
 function t_animateSbs__cashElsInfo(opts) {
 	var elements = opts.els;
-	opts.triggerElemsAttrName = (opts.mode === 'edit') ?
-		'data-field-sbstrgels-value' :
-		'data-animate-sbs-trgels';
+	opts.triggerElemsAttrName = opts.mode === 'edit' ? 'data-field-sbstrgels-value' : 'data-animate-sbs-trgels';
 	Array.prototype.forEach.call(elements, function (el) {
 		el.state = 'unactive';
-		el.animType = (opts.mode === 'edit') ? el.getAttribute('data-field-sbsevent-value') :
-			el.getAttribute('data-animate-sbs-event');
-		el.changeType = (el.animType === 'scroll') ? 'scroll' : 'time';
-		el.trigger = (opts.mode === 'edit') ? el.getAttribute('data-field-sbstrg-value') :
-			el.getAttribute('data-animate-sbs-trg');
+		el.animType =
+			opts.mode === 'edit'
+				? el.getAttribute('data-field-sbsevent-value')
+				: el.getAttribute('data-animate-sbs-event');
+		el.changeType = el.animType === 'scroll' ? 'scroll' : 'time';
+		el.trigger =
+			opts.mode === 'edit' ? el.getAttribute('data-field-sbstrg-value') : el.getAttribute('data-animate-sbs-trg');
 		el.trigger = el.trigger ? el.trigger : 1;
 		el.triggerElems = el.getAttribute(opts.triggerElemsAttrName);
 		el.wrapperEl = el.querySelector('.tn-atom__sbs-anim-wrapper');
 		el.steps = [];
-		var stringOpts = (opts.mode === 'edit') ? el.getAttribute('data-field-sbsopts-value') :
-			el.getAttribute('data-animate-sbs-opts');
+		var stringOpts =
+			opts.mode === 'edit'
+				? el.getAttribute('data-field-sbsopts-value')
+				: el.getAttribute('data-animate-sbs-opts');
 		if (stringOpts) {
 			if (stringOpts.indexOf('fixed') !== -1) {
-				el.zIndexVal = window.getComputedStyle(el).getPropertyValue('z-index');
+				el.zIndex = window.getComputedStyle(el).getPropertyValue('z-index');
 			}
-			
+
 			stringOpts = stringOpts.replace(/'/g, '"');
 			var objSteps = JSON.parse(stringOpts);
-			t_animateSbs__addDelayStepsToStepsArr(objSteps);
-			
-			el.loop = (opts.mode === 'edit') ? el.getAttribute('data-field-sbsloop-value') :
-				el.getAttribute('data-animate-sbs-loop');
-			t_animateSbs__cashElsTopOffset(el, opts);
+			t_animationSBS__addDelayToSteps(objSteps);
+
+			el.loop =
+				opts.mode === 'edit'
+					? el.getAttribute('data-field-sbsloop-value')
+					: el.getAttribute('data-animate-sbs-loop');
+			t_animationSBS__setAndCacheElTopPos(el, opts);
 			var totalUnfixedDist = 0;
 			for (var j = 0; j < objSteps.length; j++) {
 				var curStep = {};
 				curStep.state = 'unactive';
-				curStep.styles = t_animateSbs__getStylesObj(objSteps[j]);
+				curStep.styles = t_animationSBS__createStepStyles(objSteps[j]);
 				if (el.changeType === 'scroll') {
 					curStep.prevUnfixedDist = totalUnfixedDist;
 					curStep.dist = objSteps[j].di;
 					if (curStep.styles.fix === false) {
 						totalUnfixedDist += Number(curStep.dist);
 					}
-					curStep.start = (j === 0) ? el.topOffset : el.steps[j - 1].end;
+					curStep.start = j === 0 ? el.topOffset : el.steps[j - 1].end;
 					curStep.end = curStep.start + curStep.dist * 1;
 				} else {
 					curStep.time = objSteps[j].ti;
@@ -1498,8 +1771,8 @@ function t_animateSbs__cashElsInfo(opts) {
 				}
 				el.steps.push(curStep);
 			}
-			t_animateSbs__updateInfoOnImgLoad(el, opts);
-			t_animateSbs__recalcStepsStylesDiff(el.steps);
+			t_animationSBS__updateInfoOnImgLoad(el, opts);
+			t_animationSBS__updateMoveAndRotateStepsStyles(el.steps);
 		}
 	});
 }
@@ -1514,10 +1787,7 @@ function t_animateSbs__reset(opts) {
 	var elements = opts.els;
 	for (var i = 0; i < elements.length; i++) {
 		var type = elements[i].animType;
-		if (type === 'intoview' ||
-			type === 'blockintoview' ||
-			type === 'click' ||
-			type === 'hover') {
+		if (type === 'intoview' || type === 'blockintoview' || type === 'click' || type === 'hover') {
 			elements[i].classList.remove('t-sbs-anim_started');
 			var animatedWrapper = elements[i].querySelector('.tn-atom__sbs-anim-wrapper');
 			if (animatedWrapper) {
@@ -1537,35 +1807,12 @@ function t_animateSbs__reset(opts) {
 }
 
 /**
- * analog of promise
+ * wrap element
  *
- * @param {string} funcName - checked function
- * @param {Function} okFunc - main working function
- * @param {number} time - duration of delay
- */
-function t_animateSbs__onFuncLoad(funcName, okFunc, time) {
-	if (typeof window[funcName] === 'function') {
-		okFunc();
-	} else {
-		setTimeout(function checkFuncExist() {
-			if (typeof window[funcName] === 'function') {
-				okFunc();
-				return;
-			}
-			if (document.readyState === 'complete' && typeof window[funcName] !== 'function') {
-				throw new Error(funcName + ' is undefined');
-			}
-			setTimeout(checkFuncExist, time || 100);
-		});
-	}
-}
-
-/**
- * wrap element (analog $.wrap())
  * @param {HTMLElement} el - current Element
  * @param {string} className - class of wrapped el
  */
-function t_animateSbs__wrapEl(el, className) {
+function t_animationSBS__wrapEl(el, className) {
 	if (!el) return false;
 	var parent = el.parentNode;
 	var div = document.createElement('div');
@@ -1573,34 +1820,19 @@ function t_animateSbs__wrapEl(el, className) {
 	div.style.display = 'table';
 	div.style.width = 'inherit';
 	div.style.height = 'inherit';
-	var clonedEl = el.cloneNode(true);
-	div.appendChild(clonedEl);
+	div.appendChild(el);
 	if (parent) {
 		parent.appendChild(div);
-		parent.removeChild(el);
 	}
 }
 
-// Polyfill: Element.matches
-if (!Element.prototype.matches) {
-	Element.prototype.matches =
-		Element.prototype.matchesSelector ||
-		Element.prototype.msMatchesSelector ||
-		Element.prototype.mozMatchesSelector ||
-		Element.prototype.webkitMatchesSelector ||
-		Element.prototype.oMatchesSelector;
-}
-
-// Polyfill: Element.closest
-if (!Element.prototype.closest) {
-	Element.prototype.closest = function (s) {
-		var el = this;
-		while (el && el.nodeType === 1) {
-			if (Element.prototype.matches.call(el, s)) {
-				return el;
-			}
-			el = el.parentElement || el.parentNode;
-		}
-		return null;
-	};
+//=============== FOR ZERO EDITOR ============//
+//TODO remove and update in zero tpl,
+// after published for all users
+function t_animateSbs__cashElsData(opts) {}
+function t_animateSbs__generateKeyframes(opts) {
+	opts.elements = Array.prototype.slice.call(opts.els);
+	opts.isEditMode = true;
+	t_animationSBS__cacheAndSetData(opts);
+	return t_animationSBS__generateKeyframes(opts);
 }
