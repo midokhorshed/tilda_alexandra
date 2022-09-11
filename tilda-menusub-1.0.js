@@ -1,3 +1,6 @@
+// global variables declaration
+window.t_menusub__isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
 /**
  * Creating (generate submenu list and add it in DOM) and actions (show and hide by hover/click/touch) with second level menu.
  * Blocks ME[103-405].
@@ -7,15 +10,16 @@
 // eslint-disable-next-line no-unused-vars
 function t_menusub_init(recid) {
 	var rec = document.getElementById('rec' + recid);
-	var submenuWrapperList = rec ? rec.querySelectorAll('.t-menusub') : [];
-	var submenuHooks = rec ? rec.querySelectorAll('a.t-menu__link-item') : [];
+	if (!rec) return;
+	var submenuWrapperList = rec.querySelectorAll('.t-menusub');
+	var submenuHooks = rec.querySelectorAll('a.t-menu__link-item');
 
 	// check if submenu has new version to create correct selector
 	var isNewVersion = Array.prototype.some.call(submenuHooks, function (link) {
 		return link.getAttribute('data-menu-submenu-hook');
 	});
 	// event to close submenu
-	var closeEvent = window.isMobile ? 'orientationchange' : 'resize';
+	var closeEvent = window.t_menusub__isMobile ? 'orientationchange' : 'resize';
 
 	Array.prototype.forEach.call(submenuWrapperList, function (submenuWrapper) {
 		var hook = submenuWrapper.getAttribute('data-submenu-hook');
@@ -31,8 +35,10 @@ function t_menusub_init(recid) {
 		var submenu = submenuWrapper.querySelector('.t-menusub__menu');
 
 		t_menusub__appendArrow(submenuWrapper, hookLinks);
-		if (window.isMobile || 'ontouchend' in document) {
+		if (window.t_menusub__isMobile || 'ontouchend' in document) {
 			t_menusub__setUpMenuMobile(submenuWrapper, submenu, hookLinks, recid);
+			document.removeEventListener('click', t_menusub__closeFullscreenSubmenu);
+			document.addEventListener('click', t_menusub__closeFullscreenSubmenu);
 		} else {
 			t_menusub__setUpMenuDesktop(submenuWrapper, submenu, hookLinks);
 		}
@@ -43,6 +49,30 @@ function t_menusub_init(recid) {
 			if (submenu) t_menusub__hideSubmenu(submenu);
 		});
 	});
+	// TODO этот код используется для тестирования нового отображения подменю.
+	//  После правок в шаблон, необходимо изменить инициализацию на соответствие с ключом.
+	if (window.t_menusub__isMobile || 'ontouchend' in document) {
+		t_menusub__createFullscreenSubmenu(submenuWrapperList);
+	}
+}
+
+function t_menusub__closeFullscreenSubmenu(e) {
+	var submenu = e.target.closest('.t-menusub__menu--fullscreen');
+	if (!submenu) return;
+	var navArrow = e.target.closest('.t-menusub__menu--fullscreen__nav-arrow');
+	var navLink = e.target.closest('.t-menusub__link-item');
+	if (navArrow || navLink) {
+		submenu.style.transform = '';
+		document.body.classList.remove('t-body_scroll-locked');
+		document.documentElement.classList.remove('t-body_scroll-locked');
+		setTimeout(function () {
+			t_menusub__hideSubmenu(submenu);
+			if (navArrow) {
+				var submenuPos = submenu.getAttribute('data-cachedPos');
+				if (submenuPos) window.scrollTo(0, parseInt(submenuPos, 10));
+			}
+		}, 300);
+	}
 }
 
 /**
@@ -114,8 +144,11 @@ function t_menusub__setUpMenuMobile(submenuWrapper, submenu, hookLinks, recid) {
 		if (isME601) return;
 
 		// is anchor link is not active, hide previous active menu
-		if (isAnchor && isAnchor.getAttribute('data-tooltip-menu-id') !== recid &&
-			submenu.classList.contains('t-menusub__menu_show')) {
+		if (
+			isAnchor &&
+			isAnchor.getAttribute('data-tooltip-menu-id') !== recid &&
+			submenu.classList.contains('t-menusub__menu_show')
+		) {
 			t_menusub__hideSubmenu(submenu);
 		}
 
@@ -183,24 +216,52 @@ function t_menusub__showSubmenu(curAnchor, submenu, vIndent) {
 	var absoluteHookPos = curAnchor.getBoundingClientRect().left;
 	var absoluteSubmenuPos = 0;
 	var customArrowPosLeft = 0;
+	var paddingAxisX = 10;
+	var halfArrowWidth = 10;
+	var halfAnchorWidth = anchorWidth / 2;
+
+	var recID = curAnchor.closest('.r') ? curAnchor.closest('.r').id : '';
+	recID = recID.replace('rec', '');
+	var menu = document.getElementById('nav' + recID);
+	var menuAbsoluteLeftPos = menu ? menu.getBoundingClientRect().left : 0;
 
 	if (positionX + submenuWidth / 2 < winWidth) {
 		// show in the center of anchor
 		positionX = positionX + (anchorWidth - submenuWidth) / 2 + anchorMarginLeft;
 		// show near left window submenu and add styles for floating arrow
 		if (positionX < 0) {
-			positionX = 10;
+			positionX = paddingAxisX;
 			// update absolute pos value
 			absoluteSubmenuPos = positionX;
-			customArrowPosLeft = (absoluteHookPos + (anchorWidth / 2) - 20) - absoluteSubmenuPos; // 20 - arrow width
-			submenu.classList.add('t-menusub__menu-custompos');
-			submenu.style.setProperty('--custom-pos', customArrowPosLeft + 'px');
+			// update hook absolute position, if menu has right direction (as ME403)
+			absoluteHookPos -= menuAbsoluteLeftPos;
+			// set absolute hook position equals 0, if menu hasn't full window width setting
+			var notFullWidthClassList = [
+				'.t446__c12collumns',
+				'.t229__c12collumns',
+				'.t456__c12collumns',
+				'.t228__c12collumns',
+				'.t461__c12collumns',
+				'.t967__c12collumns',
+				'.t815__c12collumns',
+				'.t821__c12collumns',
+				'.t454__c12collumns',
+			];
+			var isMenuWithTwelveColWidth = notFullWidthClassList.some(function (className) {
+				return menu.querySelector(className);
+			});
+			if (isMenuWithTwelveColWidth) absoluteHookPos = 0;
+			var submenuPos = isMenuWithTwelveColWidth ? absoluteSubmenuPos : -absoluteSubmenuPos;
+			customArrowPosLeft = absoluteHookPos + halfAnchorWidth - halfArrowWidth + submenuPos;
+			t_menusub__createArrowCustomPos(submenu, customArrowPosLeft);
 		} else {
 			submenu.classList.remove('t-menusub__menu-custompos');
 		}
 	} else {
-		// show near right window border
-		positionX = winWidth - submenuWidth - 10;
+		var rightPosition = winWidth - submenuWidth - paddingAxisX;
+		customArrowPosLeft = absoluteHookPos + halfAnchorWidth - halfArrowWidth - rightPosition;
+		t_menusub__createArrowCustomPos(submenu, customArrowPosLeft);
+		positionX = rightPosition;
 	}
 
 	submenu.style.right = '';
@@ -217,12 +278,81 @@ function t_menusub__showSubmenu(curAnchor, submenu, vIndent) {
 	if (submenu.getBoundingClientRect().right > window.innerWidth) {
 		submenu.style.left = '';
 		submenu.style.right = '0';
-		submenu.classList.add('t-menusub__menu-custompos');
+		var isME403 = menu.classList.contains('t450');
 		// update absolute pos value
-		absoluteSubmenuPos = submenu.getBoundingClientRect().left;
-		customArrowPosLeft = (absoluteHookPos + (anchorWidth / 2) - 20) - absoluteSubmenuPos; // 20 - arrow width
-		submenu.style.setProperty('--custom-pos', customArrowPosLeft + 'px');
+		absoluteSubmenuPos = isME403 ? 0 : submenu.getBoundingClientRect().left;
+		customArrowPosLeft = absoluteHookPos + halfAnchorWidth - halfArrowWidth - absoluteSubmenuPos;
+		t_menusub__createArrowCustomPos(submenu, customArrowPosLeft);
 	}
+
+	// TODO этот код используется для тестирования нового отображения подменю.
+	//  После правок в шаблон, необходимо изменить инициализацию на соответствие с ключом.
+	if (window.t_menusub__isMobile || 'ontouchend' in document) {
+		submenu.style.transform = 'translateX(0)';
+		submenu.setAttribute('data-cachedPos', window.pageYOffset.toString());
+		var isInsideSideMenu = submenu.closest('.t451, .t450');
+		if (!document.body.classList.contains('t-body_scroll-locked') && !isInsideSideMenu) {
+			setTimeout(function () {
+				document.body.classList.add('t-body_scroll-locked');
+				document.documentElement.classList.add('t-body_scroll-locked');
+			}, 300);
+		}
+	}
+}
+
+function t_menusub__createFullscreenSubmenu(submenuWrapperList) {
+	Array.prototype.forEach.call(submenuWrapperList, function (submenuWrap) {
+		var submenu = submenuWrap.querySelector('.t-menusub__menu');
+		if (!submenu || submenu.querySelector('.t-menusub__menu--fullscreen__nav')) return;
+		var hookLink = submenuWrap.previousElementSibling;
+		var menu = submenu.closest('[data-menu], .t450, .t451');
+		var mainColor = window.getComputedStyle(hookLink).color;
+		var borderColor = mainColor;
+		if (mainColor.indexOf('rgb') === 0) {
+			borderColor = mainColor.replace('rgb(', '').replace(')', '');
+			borderColor += ', 0.25';
+			borderColor = 'rgba(' + borderColor + ')';
+		}
+		var bgColor = menu ? window.getComputedStyle(menu).backgroundColor : '#000000';
+		submenu.classList.add('t-menusub__menu--fullscreen');
+		submenu.style.backgroundColor = bgColor;
+		submenu.style.height = document.documentElement.clientHeight + 'px';
+
+		var submenuNav = document.createElement('div');
+		submenuNav.classList.add('t-menusub__menu--fullscreen__nav');
+		if (mainColor.indexOf('rgb') === 0) {
+			borderColor = mainColor.replace('rgb(', '').replace(')', '');
+			borderColor += ', 0.6';
+			borderColor = 'rgba(' + borderColor + ')';
+		}
+		submenuNav.style.borderBottom = '2px solid ' + borderColor;
+		var title = document.createElement('p');
+		title.classList.add('t-menusub__menu--fullscreen__nav-title');
+		title.textContent = hookLink.textContent;
+		title.style.color = mainColor;
+		title.style.fontFamily = window.getComputedStyle(hookLink).fontFamily;
+		title.style.fontWeight = window.getComputedStyle(hookLink).fontWeight;
+		title.style.fontSize = window.getComputedStyle(hookLink).fontSize;
+		var backArrow = document.createElement('div');
+		backArrow.classList.add('t-menusub__menu--fullscreen__nav-arrow');
+		backArrow.innerHTML =
+			'<svg class="tmain-submenu__close-icon" width="26px" height="26px"' +
+			' viewBox="0 0 26 26" version="1.1" xmlns="http://www.w3.org/2000/svg">\n' +
+			'        <path d="M10.4142136,5 L11.8284271,6.41421356 L5.829,12.414 ' +
+			'L23.4142136,12.4142136 L23.4142136,14.4142136 L5.829,14.414 L11.8284271,20.4142136 ' +
+			'L10.4142136,21.8284271 L2,13.4142136 L10.4142136,5 Z" fill="' +
+			mainColor +
+			'"></path>\n' +
+			'      </svg>';
+		submenuNav.appendChild(backArrow);
+		submenuNav.appendChild(title);
+		submenu.insertAdjacentElement('afterbegin', submenuNav);
+	});
+}
+
+function t_menusub__createArrowCustomPos(submenu, position) {
+	submenu.classList.add('t-menusub__menu-custompos');
+	submenu.style.setProperty('--custom-pos', position + 'px');
 }
 
 /**
@@ -241,8 +371,11 @@ function t_menusub__getLeftRelativePos(el) {
 	} else {
 		offsetLeft = el.getClientRects().length ? el.getBoundingClientRect().left : 0;
 		var offsetParent = el.offsetParent;
-		while (offsetParent && offsetParent.nodeType === 1 &&
-		window.getComputedStyle(offsetParent).getPropertyValue('position') === 'static') {
+		while (
+			offsetParent &&
+			offsetParent.nodeType === 1 &&
+			window.getComputedStyle(offsetParent).getPropertyValue('position') === 'static'
+		) {
 			offsetParent = offsetParent.offsetParent;
 		}
 		if (offsetParent && offsetParent !== el && offsetParent.nodeType === 1) {
@@ -294,16 +427,26 @@ function t_menusub__hightlight() {
 	if (pathname.charAt(0) === '/') pathname = pathname.slice(1);
 	if (pathname === '') pathname = '/';
 
-	var shouldBeActiveElements = document.querySelectorAll('.t-menusub__list-item a[href="' + url +
-		'"], .t-menusub__list-item a[href="' + url +
-		'/"], .t-menusub__list-item a[href="' + pathname + '"], .t-menusub__list-item a[href="/' + pathname +
-		'"], .t-menusub__list-item a[href="' + pathname + '/"], .t-menusub__list-item a[href="/' + pathname + '/"]');
+	var shouldBeActiveElements = document.querySelectorAll(
+		'.t-menusub__list-item a[href="' +
+			url +
+			'"], .t-menusub__list-item a[href="' +
+			url +
+			'/"], .t-menusub__list-item a[href="' +
+			pathname +
+			'"], .t-menusub__list-item a[href="/' +
+			pathname +
+			'"], .t-menusub__list-item a[href="' +
+			pathname +
+			'/"], .t-menusub__list-item a[href="/' +
+			pathname +
+			'/"]'
+	);
 
 	Array.prototype.forEach.call(shouldBeActiveElements, function (element) {
 		element.classList.add('t-active');
 	});
 }
-
 
 /**
  * special script for ME401 after showing submenu
@@ -342,8 +485,13 @@ function t_menusub__hideME401Submenu(submenu) {
 	var isStaticME401 = wrapME401Wrapper ? wrapME401Wrapper.getAttribute('data-submenu-static') : '';
 	var wrapME401ShowMenus = wrapME401.querySelectorAll('.t280__menu .t-menusub__menu_show');
 
-	if (isStaticME401 === 'n' && window.isMobile && isMobileHeight && !wrapME401ShowMenus.length &&
-		wrapME401Wrapper.classList.contains('t280__menu_static')) {
+	if (
+		isStaticME401 === 'n' &&
+		window.t_menusub__isMobile &&
+		isMobileHeight &&
+		!wrapME401ShowMenus.length &&
+		wrapME401Wrapper.classList.contains('t280__menu_static')
+	) {
 		wrapME401Wrapper.classList.remove('t280__menu_static');
 	}
 }
@@ -418,9 +566,12 @@ function t_menusub__catchScroll(navLinks) {
 	});
 
 	// update offsets by resize
-	window.addEventListener('resize', t_throttle(function () {
-		t_menusub__updateSectionsOffsets(sections);
-	}, 200));
+	window.addEventListener(
+		'resize',
+		t_throttle(function () {
+			t_menusub__updateSectionsOffsets(sections);
+		}, 200)
+	);
 
 	t_menusub__highlightNavLinks(navLinks, sections, sectionToNavigationLinkID, clickedSectionID);
 
@@ -443,11 +594,18 @@ function t_menusub__catchScroll(navLinks) {
 		});
 	});
 
-	window.addEventListener('scroll', t_throttle(function () {
-		clickedSectionID = t_menusub__highlightNavLinks(navLinks, sections, sectionToNavigationLinkID, clickedSectionID);
-	}, 100));
+	window.addEventListener(
+		'scroll',
+		t_throttle(function () {
+			clickedSectionID = t_menusub__highlightNavLinks(
+				navLinks,
+				sections,
+				sectionToNavigationLinkID,
+				clickedSectionID
+			);
+		}, 100)
+	);
 }
-
 
 /**
  * @param {HTMLElement} curlink - e.target on click submenu link
@@ -487,16 +645,19 @@ function t_menusub__getSectionByHref(curlink) {
 function t_menusub__highlightNavLinks(navLinks, sections, sectionToNavigationLinkID, clickedSectionID) {
 	var scrollPosition = window.pageYOffset;
 	var scrollHeight = Math.max(
-		document.body.scrollHeight, document.documentElement.scrollHeight,
-		document.body.offsetHeight, document.documentElement.offsetHeight,
-		document.body.clientHeight, document.documentElement.clientHeight
+		document.body.scrollHeight,
+		document.documentElement.scrollHeight,
+		document.body.offsetHeight,
+		document.documentElement.offsetHeight,
+		document.body.clientHeight,
+		document.documentElement.clientHeight
 	);
 	var returnValue = clickedSectionID;
 	var lastSection = sections.length ? sections[sections.length - 1] : null;
 	var lastSectionTopPos = lastSection ? lastSection.getAttribute('data-offset-top') : '0';
 	lastSectionTopPos = parseInt(lastSectionTopPos, 10) || 0;
 	/*if first section is not at the page top (under first blocks)*/
-	if (sections.length && clickedSectionID === null && lastSectionTopPos > (scrollPosition + 300)) {
+	if (sections.length && clickedSectionID === null && lastSectionTopPos > scrollPosition + 300) {
 		navLinks.forEach(function (link) {
 			link.classList.remove('t-active');
 		});
@@ -506,7 +667,7 @@ function t_menusub__highlightNavLinks(navLinks, sections, sectionToNavigationLin
 	for (var i = 0; i < sections.length; i++) {
 		var sectionTopPos = sections[i].getAttribute('data-offset-top');
 		var navLink = sections[i].id ? sectionToNavigationLinkID[sections[i].id] : null;
-		if (scrollPosition + 300 >= sectionTopPos || i === 0 && scrollPosition >= scrollHeight - window.innerHeight) {
+		if (scrollPosition + 300 >= sectionTopPos || (i === 0 && scrollPosition >= scrollHeight - window.innerHeight)) {
 			if (clickedSectionID === null && navLink && !navLink.classList.contains('t-active')) {
 				navLinks.forEach(function (link) {
 					link.classList.remove('t-active');
