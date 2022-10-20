@@ -1,2003 +1,2004 @@
 /**
- * В данном скрипте генерируется форма, которая в последствии добавляется в .tn-atom зеро-блока.
- * Элементы генерируются при помощи document.createElement.
- * Форма, которая находится за пределами видимости, или внутри скрытого зеро-блока, не рендерится.
- * Зеро-форма используется некоторые скрипты и стили из других библиотек Тильды, например,
- * телефонная маска, скрипт калькуляции, и тд.
+ * Forms (Zero Block)
+ * ---------------------------------------------------------------------------------
+ * Скрипт является функциональной частью Zero Block. Вызывается из скрипта tilda-zero-N.N.js.
+ * tilda-zero forms генерирует строку и парсит её в HTML внутри зеро-блока. Работает, при
+ * необходимости (если в форму добавлен инпут с телефонной маской, или блок с калькуляцией
+ * значений), со скриптами tilda-calc, tilda-range и тд.
  *
- * Все сгенерированные скрипты и стили добавляются вниз тега <body>.
+ * В генерируемой строке содержится как HTML, так и теги <style>. Тег <script> тоже может быть
+ * добавлен: обычно он создаётся чтобы инициилизировать то или иное поле, например, маску для
+ * телефона. В таком случае скрипт объявляется через document.createElement('script') и в его тело
+ * добавляется построчно то, что должно быть инициализировано. Чтобы избежать инициализации до
+ * того, как элемент будет добавлен в зеро-блок, скрипты добавляются вниз страницы и только после
+ * того, как элементы были добавлены в ZB.
  *
- * Строки формируются в функции t_zeroForms__parseIntoElement, при помощи условий внутри
- * конструкции switch...case, где при итерации объекта проверяется определенное условие и если оно
- * true, создаётся HTML-элементы, сопутствующие к нему стили и скрипты (если они нужны).
+ * Строки формируются в функции t_zeroForms__getFormInputHtml, при помощи условий внутри
+ * конструкции if...else, где при итерации объекта проверяется определенное условие и если оно
+ * true, генерируется строка, стили и, если необходимо, скрипт.
+ *
+ * Принцип подключения:
+ * - Если на странице есть хотя бы 1 элемент ('.tn-elem') с типом 'form' (data-elem-type='form').
  */
 
-/**
- * Main property of this object - is li_type.
- * It's meat what type of form element user use:
- * 'em' - email
- * 'ph' - phone
- * 'nm' - name
- * 'in' - input (one line input field)
- * 'ta' - textarea
- * 'sb' - select box (dropdown)
- * 'rd' - radio (question with answers)
- * 'ri' - radio image (question with img answers)
- * 'cb' - checkbox
- * 'uw' - upload widget (file)
- * 'uc' - uploadcare plugin (file)
- * 'da' - date
- * 'tm' - time
- * 'qn' - plus/minus btn (quantity)
- * 'rg' - range slider (quantity)
- * 'ur' - website url
- * 'tx' - text comment
- * 'ws' - white space
- * 'hd' - hidden
- * 'fr' - formula (calculation field)
- *
- * li_ph - placeholder value
- * li_name and li_nm in many types of elements contains same value - variable name
- * lid - id of current element
- * ls - index of current element * 10 (10, 20, 30, etc.)
- * loff - field is switched off, or not
- *
- * li_rule used in one line input field
- * li_rows used only in textarea and white space
- * li_value used in quantity (range, plus/minus btn) and hidden input
- *
- * properties for selects:
- * li_defselitem - default selected item
- * li_variants - list of options
- * li_selfirstvar - selected first option
- *
- * properties for 'question with img answers':
- * li_gallery - objects with img url, alts
- * li_imgratio - image ratio
- * in this type element value of 'li_name' can be different with 'li_nm'
- *
- * properties for 'checkbox':
- * li_checked - is checkbox checked by default
- *
- * properties for 'upload widget':
- * li_multiupl - can upload more than one file
- * li_uwkey - uplad widget public key
- *
- * properties for 'uploadcare':
- * li_inp - local lang
- * li_uckey - upladcare public key
- *
- * properties for 'date':
- * li_dateUnavailFr - unavailable Friday
- * li_dateUnavailFuture - unavailable Future
- * li_dateUnavailMo - unavailable Monday
- * li_dateUnavailPast - unavailable Past
- * li_dateUnavailSa - unavailable Saturday
- * li_dateUnavailSu - unavailable Sunday
- * li_dateUnavailTh - unavailable Thursday
- * li_dateUnavailTu - unavailable Tuesday
- * li_dateUnavailWe - unavailable Wednesday
- * li_datediv - separator value
- * li_dateformat: "DD-MM-YYYY"
- * li_datemask: "99/99/9999"
- * in this type element value of 'li_name' can be different with 'li_nm'
- *
- * properties for 'range slider':
- * li_step
- * li_vmax - max value
- * li_vmin - min value
- *
- * property for 'text comment':
- * li_text - text value
- *
- * properties for 'calculation field':
- * li_expr - expression
- * li_postfix
- * li_prefix
- *
- * @typedef {
- *  {
- *  li_name: string | undefined,
- *  li_nm: string | undefined,
- *  li_ph: string | undefined,
- *  li_req: 'y' | undefined,
- *  li_title: string | undefined,
- *  li_subtitle: string | undefined,
- *  li_type: 'em' | 'ph' | 'nm' | 'in' | 'ta' | 'sb' | 'rd' | 'ri' | 'cb' | 'uw' | 'uc' | 'da' | 'tm' | 'qn' | 'rg' | 'ur' | 'tx'
- *   | 'ws' | 'hd' | 'fr', lid: string, loff: 'y' | '',
- *
- *  li_rule: string | undefined,
- *
- *  li_rows: string | undefined,
- *
- *  li_value: string | undefined,
- *
- *  li_defselitem: string | undefined,
- *  li_variants: string | undefined,
- *  li_selfirstvar: string | undefined,
- *
- *  li_gallery: string | undefined,
- *  li_imgratio: string | undefined,
- *
- *  li_checked: 'y' | undefined,
- *
- *  li_multiupl: string | undefined,
- *  li_uwkey: string | undefined,
- *
- *  li_inp: string | undefined,
- *  li_uckey: string | undefined,
- *
- *  li_dateUnavailFr: 'y' | undefined,
- *  li_dateUnavailFuture: 'y' | undefined,
- *  li_dateUnavailMo: 'y' | undefined,
- *  li_dateUnavailPast: 'y' | undefined,
- *  li_dateUnavailSa: 'y' | undefined,
- *  li_dateUnavailSu: 'y' | undefined,
- *  li_dateUnavailTh: 'y' | undefined,
- *  li_dateUnavailTu: 'y' | undefined,
- *  li_dateUnavailWe: 'y' | undefined,
- *  li_datediv: 'slash' | 'dot' | 'dash' | undefined,
- *  li_dateformat: 'DD-MM-YYYY' | 'MM-DD-YYYY' | 'YYYY-MM-DD' | undefined,
- *  li_datemask: '99/99/9999' | '99.99.9999' | '99-99-9999' | '9999/99/99' | '9999.99.99' | '9999-99-99' | undefined,
- *
- *  li_step: string | undefined,
- *  li_vmax: string | undefined,
- *  li_vmin: string | undefined,
- *
- *  li_text: string | undefined,
- *
- *  li_expr: string | undefined,
- *  li_postfix: string | undefined,
- *  li_prefix: string | undefined,
- *
- *  li_mask: string | undefined,
- *  li_masktype: 'a' | 'b' | undefined,
- *  li_maskcountry: string | undefined,
- *
- *  li_radcb: 'cb' | 'rb' | undefined,
- *  li_label: string | undefined,
- *  li_addtocart: string | undefined,
- *  li_prod_title: string | undefined,
- *  li_prod_img: string | undefined,
- *  }
- * } FormObjectEl
- */
+ window.t_zeroForms__browserLang = (window.navigator.userLanguage || window.navigator.language)
+ .toUpperCase()
+ .slice(0, 2);
 
-/**
- * In this object contains information about styles of current form,
- * and some information need to data transfer (name, success event, etc.)
- * @typedef {
- *   {
- *    inputpos: string | undefined,
- * 		inputfontfamily: string | undefined,
- * 		inputfontsize: string | undefined,
- * 		inputfontweight: string | undefined,
- * 		inputvariationweight: string | undefined,
- * 		inputcolor: string | undefined,
- * 		inputbgcolor: string | undefined,
- * 		inputbordercolor: string | undefined,
- * 		inputbordersize: string | undefined,
- * 		inputradius: string | undefined,
- * 		inputheight: string | undefined,
- * 		inputmargbottom: string | undefined,
- * 		inputmargright: string | undefined,
- * 		inputtitlefontsize: string | undefined,
- * 		inputtitlefontweight: string | undefined,
- * 		inputtitlevariationweight: string | undefined,
- * 		inputtitlecolor: string | undefined,
- * 		inputelscolor: string | undefined,
- * 		inputelsfontsize: string | undefined,
- * 		inputelsfontweight: string | undefined,
- * 		inputelsvariationweight: string | undefined,
- * 		inputtitlemargbottom: string | undefined,
- * 		inputsstyle: string | undefined,
- * 		inputsstyle2: string | undefined,
- * 		buttontitle: string | undefined,
- * 		buttonalign: string | undefined,
- * 		buttoncolor: string | undefined,
- * 		buttonbgcolor: string | undefined,
- * 		buttonbordercolor: string | undefined,
- * 		buttonbordersize: string | undefined,
- * 		buttonradius: string | undefined,
- * 		buttonmargtop: string | undefined,
- * 		buttonwidth: string | undefined,
- * 		buttonheight: string | undefined,
- * 		buttonshadowsize: string | undefined,
- * 		buttonshadowopacity: string | undefined,
- * 		buttonfontfamily: string | undefined,
- * 		buttonfontsize: string | undefined,
- * 		buttonfontweight: string | undefined,
- * 		buttonvariationweight: string | undefined,
- * 		buttonuppercase: string | undefined,
- * 		buttonbgcolorhover: string | undefined,
- * 		buttoncolorhover: string | undefined,
- * 		buttonbordercolorhover: string | undefined,
- * 		buttonshadowsizehover: string | undefined,
- * 		buttonshadowopacityhover: string | undefined,
- * 		buttonspeedhover: string | undefined,
- * 		formmsgsuccess: string | undefined,
- * 		formmsgurl: string | undefined,
- * 		formerrreq: string | undefined,
- * 		formerremail: string | undefined,
- * 		formerrphone: string | undefined,
- * 		formerrname: string | undefined,
- * 		formbottomtext: string | undefined,
- * 		formbottomcb: string | undefined,
- * 		formname: string | undefined,
- * 		receivers: string | undefined,
- * 		inputfrbgcolor: string | undefined,
- *   }
- * } formObj
- */
-
-// prettier-ignore
-window.t_zeroForms__browserLang = (window.navigator.userLanguage || window.navigator.language).toUpperCase().slice(0, 2);
-window.t_zeroForms__isES6Support = typeof Symbol !== 'undefined';
-
-//TODO t_onFuncLoad в зеро-редакторе
-if (window.tildamode === 'zero' && typeof window.t_onFuncLoad === 'undefined') {
-	window.t_onFuncLoad = function (funcName, okFunc) {
-		if (typeof window[funcName] === 'function') {
-			okFunc();
-		} else {
-			setTimeout(function checkFuncExist() {
-				if (typeof window[funcName] === 'function') {
-					okFunc();
-					return;
-				}
-				if (document.readyState === 'complete' && typeof window[funcName] !== 'function') {
-					throw new Error(funcName + ' is undefined');
-				}
-				setTimeout(checkFuncExist, 100);
-			});
-		}
-	};
+function t_zero__onReady(func) {
+ document.readyState !== 'loading' ? func() : document.addEventListener('DOMContentLoaded', func);
 }
 
 /**
- * Language override based on attribute
- */
-t_zeroForms__onReady(function () {
-	var allrecords = document.getElementById('allrecords');
-	if (!allrecords) return;
-	var projectLang = allrecords.getAttribute('data-tilda-project-lang');
-	if (projectLang) window.t_zeroForms__browserLang = projectLang;
+* Language override based on attribute
+*/
+t_zero__onReady(function () {
+ var allrecords = document.getElementById('allrecords');
+ if (allrecords) {
+	 var projectLang = allrecords.getAttribute('data-tilda-project-lang');
+	 if (projectLang) {
+		 window.t_zeroForms__browserLang = projectLang;
+	 }
+ }
 });
 
 /**
- * get formObject and init zeroForm
- *
- * @param {number| string} recid - record ID
- * @param {string} elemid - element ID
- * @param {{FormObjectEl}} formObjectEls
- */
-function t_zeroForms__init(recid, elemid, formObjectEls) {
-	var rec = document.getElementById('rec' + recid);
-	var zeroForm = rec ? rec.querySelector('.tn-elem[data-elem-id="' + elemid + '"]') : null;
-	if (!zeroForm) return;
-	var tildamode = t_zeroForms__getTildaMode();
-	var checkFunction = tildamode === 'zero' ? 'elem__getFieldValue' : 't396_elem__getFieldValue';
-	t_onFuncLoad(checkFunction, function () {
-		t_zeroForms__renderForm(zeroForm, formObjectEls, recid, tildamode);
-	});
-	// set position after zero form rendered
-	t_onFuncLoad('t396_elem__renderViewOneField', function () {
-		t396_elem__renderViewOneField(zeroForm, 'left');
-		t396_elem__renderViewOneField(zeroForm, 'top');
-	});
+* init zeroForms
+*
+* @param {number| string} recid - record ID
+* @param {string} elemid - element ID
+*/
+// eslint-disable-next-line no-unused-vars
+function t_zeroForms__init(recid, elemid, formElems) {
+ var element = document.querySelector('#rec' + recid + ' .tn-elem[data-elem-id="' + elemid + '"]');
+ if (!element) return;
+
+ if (!formElems) {
+	 var textarea = element.querySelector('.tn-atom__inputs-textarea');
+	 formElems = textarea ? textarea.value : null;
+ }
+
+ t_zeroForms__renderForm(element, formElems, recid);
+
+ var hasJquery = typeof jQuery === 'function';
+ try {
+	 t396_elem__renderViewOneField(hasJquery ? $(element) : element, 'left');
+	 t396_elem__renderViewOneField(hasJquery ? $(element) : element, 'top');
+ } catch (e) {
+	 /**/
+ }
 }
 
 /**
- *
- * @param {HTMLElement} zeroForm - current zero-block element (in our case - form)
- * @param {{FormObjectEl} | string} formObjectEls
- * @param {number | string} recid - record ID
- * @param {'edit' | 'preview' | 'published'} tildamode
- */
-function t_zeroForms__renderForm(zeroForm, formObjectEls, recid, tildamode) {
-	zeroForm = t_zeroForms__getEl(zeroForm);
-	if (!recid && window.tildamode === 'published') {
-		recid = zeroForm.closest('.r').id.replace('rec', '');
-	}
+*
+* @param {HTMLElement} el - current Element
+* @param {Object} inputsValuesObj - object with inputs values and types
+* @return {void} - if zero-block has .t-calc
+*/
+function t_zeroForms__saveFormData(el, inputsValuesObj) {
+ if (window.jQuery && el instanceof jQuery) {
+	 el = el.length ? el.get(0) : null;
+ }
+ var currentZB = el ? el.closest('.t396') : null;
+ var zeroBlockHasCalc = currentZB ? currentZB.querySelector('.t-calc') : null;
+ if (zeroBlockHasCalc) return;
+ var inputsList = el
+	 ? el.querySelectorAll('.t-input, .t-select, .t-img-select, .t-range, .t-radio, .t-checkbox')
+	 : [];
 
-	// if function inited from zero-block script, check typeof of formObjectEls, and update it, if it neseccary
-	if (typeof formObjectEls === 'string') formObjectEls = JSON.parse(formObjectEls);
+ Array.prototype.forEach.call(inputsList, function (input) {
+	 var inputContainer = input.closest('.t-input-group');
+	 var inputID = inputContainer ? inputContainer.getAttribute('data-input-lid') : null;
+	 if (!inputsValuesObj[inputID]) inputsValuesObj[inputID] = {};
 
-	var record = document.querySelector('.t-records');
-	var isEditMode = record ? record.getAttribute('data-tilda-mode') === 'edit' : false;
-	if (!isEditMode) isEditMode = window.tildamode !== 'published';
-	if (zeroForm.classList.contains('zero-form-rendered') && !isEditMode) return;
+	 inputsValuesObj[inputID].val = input.value;
+	 inputsValuesObj[inputID].tag = input.tagName.toLowerCase();
 
-	var rec = zeroForm.closest('.r');
-	// prettier-ignore
-	if (window.tildamode === 'published' && (t_zeroForms__isRecordHidden(rec) || t_zeroForms__isFormOutside(zeroForm))) return;
+	 if (input.classList.contains('t-img-select')) {
+		 inputsValuesObj[inputID].type = 'img-select';
+		 inputsValuesObj[inputID].val = [];
+		 var radioInputsImg = inputContainer.querySelectorAll('.t-img-select');
 
-	if (!formObjectEls) {
-		var textarea = zeroForm.querySelector('.tn-atom__inputs-textarea');
-		formObjectEls = textarea && textarea.value ? JSON.parse(textarea.value) : {};
-	}
+		 Array.prototype.forEach.call(radioInputsImg, function (radio) {
+			 if (radio.checked) {
+				 inputsValuesObj[inputID].val.push(radio.value);
+			 }
+		 });
+	 }
 
-	var arrayOfElements = t_zeroFormsFromObjToArray(formObjectEls);
+	 if (input.classList.contains('t-range')) {
+		 inputsValuesObj[inputID].type = 'range';
+	 }
 
-	var zeroFormAtom = zeroForm.querySelector('.tn-atom');
-	if (window.tildamode === 'zero' || window.tildamode === 'edit') {
-		zeroFormAtom.innerHTML = '';
-	} else if (zeroFormAtom.querySelector('.t-form')) return;
+	 if (input.classList.contains('t-radio')) {
+		 inputsValuesObj[inputID].val = null;
+		 inputsValuesObj[inputID].type = 'radio';
+		 var radioInputs = inputContainer.querySelectorAll('.t-radio');
 
-	var form = t_zeroForm__createForm(recid, tildamode, arrayOfElements, zeroForm);
-	if (!form) return;
-	zeroFormAtom.insertAdjacentElement('beforeend', form);
+		 Array.prototype.forEach.call(radioInputs, function (radio) {
+			 if (radio.checked) {
+				 inputsValuesObj[inputID].val = radio.value;
+			 }
+		 });
+	 }
 
-	var customElEvent = document.createEvent('Event');
-	customElEvent.initEvent('render', true, true);
-	zeroForm.dispatchEvent(customElEvent);
-	zeroForm.classList.add('zero-form-rendered');
-	t_zeroForms__initMaskAfterRender(zeroForm);
+	 if (input.classList.contains('t-checkbox')) {
+		 inputsValuesObj[inputID].val = input.checked;
+		 inputsValuesObj[inputID].type = 'checkbox';
+	 }
+
+	 var isValEmptyArray = Array.isArray(inputsValuesObj[inputID].val) && !inputsValuesObj[inputID].val.length;
+	 if (!inputsValuesObj[inputID].val || isValEmptyArray) {
+		 delete inputsValuesObj[inputID];
+	 }
+ });
 }
 
 /**
- * mask inited after DOMContentLoaded, but hidden forms not render.
- * We should initing them again, when hidden forms will be rendered.
- *
- * @param {HTMLElement} form
- */
-function t_zeroForms__initMaskAfterRender(form) {
-	t_zeroForm__onRender(form, true, function () {
-		var hasMask = form.querySelector('.js-tilda-mask');
-		if (hasMask) {
-			t_onFuncLoad('tildaForm_initMasks', function () {
-				setTimeout(function () {
-					var hasNotInitedMask = form.querySelector('.js-tilda-mask:not([data-tilda-mask-init="1"])');
-					if (hasNotInitedMask) {
-						tildaForm_initMasks();
-					}
-				}, 500);
-			});
-		}
-	});
-}
+*
+* @param {HTMLElement} el - current element
+* @param {Object} inputsValues -inputs values object
+*/
+function t_zeroForms__setFormData(el, inputsValues) {
+ for (var id in inputsValues) {
+	 var type = inputsValues[id].type;
+	 var value = inputsValues[id].val;
+	 var tag = inputsValues[id].tag;
+	 var input;
 
-function t_zeroForm__createForm(recid, tildamode, arrayOfElements, zeroForm) {
-	if (!tildamode) tildamode = window.tildamode || t_zeroForms__getTildaMode();
-	var formObj = t_zeroForms__createFormObj(zeroForm);
-	var isPublished = tildamode === 'published';
-	var arrayOfElsWithoutHiddenFiels = arrayOfElements.filter(function (field) {
-		return field.loff !== 'y' && field.li_type !== 'hd';
-	});
-
-	var form = document.createElement(isPublished ? 'form' : 'div');
-	form.classList.add('t-form');
-	form.classList.add('t-form_inputs-total_' + arrayOfElsWithoutHiddenFiels.length);
-	// .t-form_bbonly class append, when in zero-editor set for form input style: only border-bottom
-	if (formObj.inputsstyle) form.classList.add('t-form_bbonly');
-	// append horizontal styles, if them sets to current form
-	if (formObj.inputpos === 'h') form.classList.add('tn-form_horiz');
-
-	// for published version set more data and values, then for editor, or preview
-	if (isPublished) {
-		//TODO duplicated id, if zeroblock contains more then one form
-		form.id = 'form' + recid;
-		form.name = 'form' + recid;
-		form.role = 'form';
-		form.action = 'https://forms.tildacdn.com/procces/';
-		form.method = 'POST';
-		form.classList.add('js-form-proccess');
-		form.setAttribute('data-formactiontype', '2');
-		form.setAttribute('data-inputbox', '.t-input-group');
-		form.setAttribute('data-success-callback', 't396_onSuccess');
-		form.setAttribute('data-success-popup', 'y');
-		form.setAttribute('data-error-popup', 'y');
-		if (formObj.formmsgurl) form.setAttribute('data-success-url', formObj.formmsgurl);
-	}
-
-	// append to form hidden inputs
-	var formReceiversArr = formObj.receivers ? formObj.receivers.split(',') : [];
-	formReceiversArr.forEach(function (receiverValue) {
-		var hiddenInput = t_zeroForms__createHiddenField(receiverValue, 'formservices[]', 'js-formaction-services');
-		form.insertAdjacentElement('beforeend', hiddenInput);
-	});
-
-	// append hidden input with form name value, if it exists
-	if (formObj.formname) {
-		var formNameInput = t_zeroForms__createHiddenField(formObj.formname, 'tildaspec-formname', '');
-		form.insertAdjacentElement('beforeend', formNameInput);
-	}
-
-	// create success box
-	var successBox = document.createElement('div');
-	successBox.classList.add('js-successbox');
-	successBox.classList.add('t-form__successbox');
-	successBox.classList.add('t-text');
-	successBox.classList.add('t-text_sm');
-	successBox.style.display = 'none';
-	successBox.textContent = formObj.formmsgsuccess;
-	form.insertAdjacentElement('beforeend', successBox);
-
-	var titleStyles = {
-		color: formObj.inputtitlecolor || '',
-		fontWeight: formObj.inputtitlefontweight || '',
-		fontFamily: formObj.inputfontfamily || '',
-		fontSize: formObj.inputtitlefontsize || '',
-		paddingBottom: formObj.inputtitlemargbottom || '',
-	};
-
-	var inputsBlock = t_zeroForms__generateInputsBlock(recid, zeroForm, arrayOfElements, formObj, titleStyles);
-	form.insertAdjacentElement('beforeend', inputsBlock);
-
-	var formID = zeroForm.getAttribute('data-elem-id');
-
-	if (formObj.formbottomtext) {
-		var bottomText = document.createElement('div');
-		bottomText.style.textAlign = formObj.buttonalign === 'center' ? 'center' : 'left';
-		bottomText.style.color = titleStyles.color;
-		bottomText.style.fontWeight = titleStyles.fontWeight;
-		bottomText.style.fontFamily = titleStyles.fontFamily;
-		if (formObj.formbottomcb) t_zeroForms__getBottomText(formID, formObj, recid, zeroForm);
-		form.insertAdjacentElement('beforeend', bottomText);
-	}
-
-	form.insertAdjacentElement('beforeend', t_zeroForms__createErrorBox(formObj, 'bottom'));
-	form.insertAdjacentElement('beforeend', t_zeroForms__createCommentField());
-
-	t_zeroForms__createInputPlaceholderStyles(formID, formObj, recid, zeroForm);
-
-	if (formObj.inputpos === 'h') {
-		t_zeroForms__setScriptOrStyle('t-zero-form-h-styles', 'tilda-zero-form-horizontal.min.css', '', 'link', false);
-	}
-
-	var commonStyle = '.tn-atom .t-input-block {position: relative;}';
-	t_zeroForms__setScriptOrStyle('t-zero-form-c-styles', '', commonStyle, 'style', zeroForm);
-
-	if (formObj.inputsstyle2 === 'y') {
-		t_zeroForm__onRender(zeroForm, false, function () {
-			t_zeroForms__animateInputs(zeroForm, formObj, recid, formID);
-		});
-	}
-
-	if (tildamode === 'preview' || tildamode === 'published') {
-		t_onFuncLoad('tildaForm_initMasks', function () {
-			tildaForm_initMasks();
-		});
-	}
-
-	if (tildamode !== 'preview') {
-		var multiLandingBlocks = document.querySelectorAll('[data-record-type="803"]');
-		Array.prototype.forEach.call(multiLandingBlocks, function (multiLandingBlock) {
-			var multiLandingID = multiLandingBlock.id.replace('rec', '');
-			t_onFuncLoad('t803_init', function () {
-				t803_init(multiLandingID);
-			});
-		});
-	}
-
-	return form;
-}
-
-function t_zeroForms__createCommentField() {
-	var commentField = document.createElement('div');
-	commentField.style.position = 'absolute';
-	commentField.style.left = '-5000px';
-	commentField.style.bottom = '0';
-	commentField.style.display = 'none';
-
-	var commentInput = document.createElement('input');
-	commentInput.type = 'text';
-	commentInput.name = 'form-spec-comments';
-	commentInput.value = 'Its good';
-	commentInput.classList.add('js-form-spec-comments');
-	commentInput.tabIndex = -1;
-	commentField.insertAdjacentElement('beforeend', commentInput);
-	return commentField;
-}
-
-function t_zeroForms__generateInputsBlock(recid, zeroForm, arrayOfElements, formObj, titleStyles) {
-	var formID = zeroForm.getAttribute('data-elem-id');
-	var filteredArrayOfEls = arrayOfElements.filter(function (elementObj) {
-		return elementObj.loff !== 'y' && elementObj.li_type; // remove from list hidden or switch off fields
-	});
-
-	var inputsBlock = document.createElement('div');
-	inputsBlock.classList.add('t-form__inputsbox');
-
-	filteredArrayOfEls.forEach(function (elementObj) {
-		// prettier-ignore
-		var parsedHTMLElement = t_zeroForms__parseIntoElement(recid, zeroForm, elementObj, formObj, titleStyles, formID);
-		if (parsedHTMLElement) inputsBlock.insertAdjacentElement('beforeend', parsedHTMLElement);
-	});
-
-	inputsBlock.insertAdjacentElement('beforeend', t_zeroForms__createErrorBox(formObj, 'middle'));
-	inputsBlock.insertAdjacentElement('beforeend', t_zeroForms__createFormButton(recid, zeroForm, formID, formObj));
-
-	return inputsBlock;
+	 switch (type) {
+		 case 'img-select':
+			 value.forEach(function (val) {
+				 input = el.querySelector('[data-input-lid="' + id + '"] input[value="' + val + '"]');
+				 if (input) input.checked = true;
+			 });
+			 break;
+		 case 'radio':
+			 input = el.querySelector('[data-input-lid="' + id + '"] input[value="' + value + '"]');
+			 if (input) input.checked = true;
+			 break;
+		 case 'checkbox':
+			 input = el.querySelector('[data-input-lid="' + id + '"] ' + tag);
+			 if (input) input.checked = value;
+			 break;
+		 default:
+			 input = el.querySelector('[data-input-lid="' + id + '"] ' + tag);
+			 if (input) {
+				 input.value = value;
+				 if (type === 'range') {
+					 var customOnInputEvent = document.createEvent('Event');
+					 customOnInputEvent.initEvent('input', true, true);
+					 input.dispatchEvent(customOnInputEvent);
+				 }
+			 }
+			 break;
+	 }
+ }
 }
 
 /**
- * parse from into HTML
- *
- * @param {string} recid - record ID
- * @param {HTMLElement} zeroForm - current form
- * @param {FormObjectEl} elementObj - object item
- * @param {formObj} formObj
- * @param {object} titleStyles
- * @param {string} formID
- * @returns {HTMLElement | void}
- */
-function t_zeroForms__parseIntoElement(recid, zeroForm, elementObj, formObj, titleStyles, formID) {
-	var isHiddenInput = elementObj.li_type === 'hd';
-	if (isHiddenInput) return t_zeroForms__createHiddenField(elementObj.li_value, elementObj.li_nm, '');
-
-	var inputPosStyles = formObj.inputmargbottom ? 'margin-bottom:' + formObj.inputmargbottom + 'px;' : '';
-	// prettier-ignore
-	inputPosStyles += formObj.inputmargright && formObj.inputpos === 'h' ? 'padding-right:' + formObj.inputmargright + 'px;' : '';
-
-	var inputGroup = document.createElement('div');
-	inputGroup.classList.add('t-input-group');
-	inputGroup.classList.add('t-input-group_' + elementObj.li_type);
-	inputGroup.setAttribute('data-input-lid', elementObj.lid);
-	if (inputPosStyles) inputGroup.style = inputPosStyles;
-
-	// prettier-ignore
-	var inputFontWeight = formObj.inputfontweight === 'variation' ? formObj.inputvariationweight : formObj.inputfontweight;
-	// prettier-ignore
-	var textFontWeight = formObj.inputelsfontweight === 'variation' ? formObj.inputelsvariationweight : formObj.inputelsfontweight;
-	// prettier-ignore
-	var titleFontWeight = formObj.inputtitlefontweight === 'variation' ? formObj.inputtitlevariationweight : formObj.inputtitlefontweight;
-
-	if (elementObj.li_title) t_zeroForms__generateTitle(elementObj, titleStyles, inputGroup, titleFontWeight);
-	if (elementObj.li_subtitle) t_zeroForms__generateSubtitle(elementObj, titleStyles, inputGroup);
-
-	var inputStyles = t_zeroForms__initInputStyles(formObj, inputFontWeight);
-
-	var labelStyles = {
-		fontSize: formObj.inputelsfontsize || '',
-		fontWeight: textFontWeight || '',
-	};
-
-	var inputPreferences = {
-		name: elementObj.li_nm,
-		placeholder: elementObj.li_ph || '',
-		secondaryClassName: formObj.inputsstyle ? 't-input_bbonly' : '',
-		require: elementObj.li_req === 'y',
-		rule: elementObj.li_rule || '',
-		mask: elementObj.li_mask || '',
-	};
-
-	var inputBlock = document.createElement('div');
-	inputBlock.classList.add('t-input-block');
-	var generatedField;
-
-	switch (elementObj.li_type) {
-		case 'em': // email
-			generatedField = t_zeroForms__createInput(elementObj, inputStyles, inputPreferences, 'email');
-			break;
-		case 'ph': // phone
-			generatedField = t_zeroForms__createPhoneInput(recid, elementObj, inputStyles, inputPreferences);
-			if (elementObj.li_masktype === 'a') {
-				t_zeroForms__setScriptOrStyle('t-zero-phonemask', 'tilda-phone-mask-1.1.min.js', '', 'script', false);
-				t_zeroForm__onRender(zeroForm, true, function () {
-					t_onFuncLoad('t_form_phonemask_load', function () {
-						var selector = '.js-phonemask-input[data-phonemask-lid="' + elementObj.lid + '"]';
-						var currentPhoneInput = document.querySelector(selector);
-						if (currentPhoneInput) t_form_phonemask_load(currentPhoneInput);
-					});
-				});
-			}
-			break;
-		case 'nm': // name
-			generatedField = t_zeroForms__createInput(elementObj, inputStyles, inputPreferences, 'name');
-			break;
-		case 'in': // input (one line input field)
-			generatedField = t_zeroForms__createInput(elementObj, inputStyles, inputPreferences, 'oneline');
-			break;
-		case 'ta': // textarea
-			generatedField = t_zeroForms__createInput(elementObj, inputStyles, inputPreferences, 'textarea');
-			break;
-		case 'sb': // select box (dropdown)
-			generatedField = t_zeroForms__createSelect(elementObj, inputStyles, inputPreferences);
-			if ((formObj.inputsstyle && formObj.inputelscolor) || inputStyles.color) {
-				var styles = document.createElement('style');
-				var selector = t_zeroForms__createSelector(recid, formID, '.t-select__wrapper:after');
-				var selectorWrapperColor = formObj.inputsstyle ? formObj.inputelscolor : inputStyles.color;
-				styles.textContent = selector + '{border-top-color:' + selectorWrapperColor + ';}';
-				generatedField.insertAdjacentElement('beforeend', styles);
-			}
-			break;
-		case 'rd': // radio (question with answers)
-			generatedField = t_zeroForms__createRadio(elementObj, formObj, inputPreferences, labelStyles);
-			var inputType = elementObj.li_radcb === 'cb' ? 'checkbox' : 'radio';
-			t_zeroForms__setIndicatorStyles(recid, formID, formObj.inputelscolor, inputType, generatedField);
-			var fieldSetStyles = '.tn-atom__form fieldset {padding: 0; margin: 0; border: none;}';
-			t_zeroForms__setScriptOrStyle('t-zero-form-fieldset-' + formID, '', fieldSetStyles, 'style', zeroForm);
-			if (inputType === 'checkbox') {
-				t_zeroForm__onRender(zeroForm, false, function () {
-					var inputWrapper = zeroForm.querySelector('[data-input-lid="' + elementObj.lid + '"]');
-					if (!inputWrapper) return;
-					var checkboxList = Array.prototype.slice.call(inputWrapper.querySelectorAll('.t-checkbox'));
-					checkboxList.forEach(function (checkbox) {
-						checkbox.addEventListener('input', t_zeroForms__updateCheckboxesValues);
-					});
-				});
-			}
-			break;
-		case 'ri': // radio image (question with img answers)
-			generatedField = t_zeroForms__createRadioImage(elementObj, formObj, inputPreferences);
-			t_zeroForms__setIndicatorStyles(recid, formID, formObj.inputelscolor, 'img-select', generatedField);
-			t_zeroForms__setScriptOrStyle(
-				't-zero-img-select-styles',
-				'tilda-img-select-1.0.min.css',
-				'',
-				'link',
-				false
-			);
-			t_zeroForms__setScriptOrStyle(
-				't-zero-img-select-script',
-				'tilda-img-select-1.0.min.js',
-				'',
-				'script',
-				false
-			);
-			t_zeroForm__onRender(zeroForm, false, function () {
-				t_onFuncLoad('t_input_imgselect_init', function () {
-					t_input_imgselect_init(recid, elementObj.lid);
-					if (recid) t_input_imgselect_invertColor(recid);
-				});
-			});
-			break;
-		case 'cb': // checkbox
-			generatedField = t_zeroForms__createCheckbox(elementObj, labelStyles, formObj, inputPreferences);
-			t_zeroForms__setIndicatorStyles(recid, formID, formObj.inputelscolor, 'checkbox', generatedField);
-			break;
-		case 'uw': // upload widget (file)
-			generatedField = t_zeroForms__createUploadField(elementObj, inputPreferences, 'uw');
-			if (window.tildamode === 'published') {
-				t_zeroForm__onRender(zeroForm, true, function () {
-					t_onFuncLoad('t_upwidget__init', function () {
-						t_upwidget__init();
-					});
-				});
-			}
-			break;
-		case 'uc': // uploadcare plugin (file)
-			generatedField = t_zeroForms__createUploadField(elementObj, inputPreferences, 'uc');
-			var scriptContent = 'UPLOADCARE_LOCALE ="' + elementObj.li_inp + '";';
-			scriptContent += 'UPLOADCARE_TABS = "all";';
-			t_zeroForms__setScriptOrStyle('t-zero-uploadcare-' + formID, '', scriptContent, 'script', false);
-			break;
-		case 'da': // date
-			generatedField = t_zeroForms__createDateField(elementObj, inputPreferences, inputStyles, formObj);
-			t_zeroForm__onRender(zeroForm, true, function () {
-				t_onFuncLoad('t_datepicker_init', function () {
-					t_datepicker_init(recid, elementObj.lid, formID);
-				});
-			});
-			break;
-		case 'tm': // time
-			generatedField = t_zeroForms__createInput(elementObj, inputStyles, inputPreferences, 'time');
-			break;
-		case 'qn': // plus/minus btn (quantity)
-			// prettier-ignore
-			generatedField = t_zeroForms__createQuantityField(elementObj, inputStyles, formObj.inputelscolor, inputPreferences);
-			document.removeEventListener('click', t_zeroForms__initQuanityClickCount);
-			document.addEventListener('click', t_zeroForms__initQuanityClickCount);
-			break;
-		case 'rg': // range slider (quantity)
-			// prettier-ignore
-			generatedField = t_zeroForms__createQuantityRange(elementObj, inputStyles, formObj.inputtitlecolor, inputPreferences);
-			if (formObj.inputelscolor) {
-				var rangeStyles = document.createElement('style');
-				var rangeSelector = t_zeroForms__createSelector(recid, formID, '.t-range');
-				var rangePostfix = ['::-webkit-slider-thumb', '::-moz-range-thumb', '::-ms-thumb'];
-				rangePostfix.forEach(function (postfix) {
-					rangeStyles.textContent += rangeSelector + postfix + '{background:' + formObj.inputelscolor + ';}';
-				});
-				generatedField.insertAdjacentElement('beforeend', rangeStyles);
-			}
-			t_zeroForm__onRender(zeroForm, false, function () {
-				t_onFuncLoad('t_input_range_init', function () {
-					// find recid in preview mode
-					if (!recid) recid = zeroForm.closest('.r') ? zeroForm.closest('.r').id.replace('rec', '') : '';
-					if (recid) {
-						try {
-							t_input_range_init(recid, elementObj.lid);
-						} catch (err) {
-							console.log(err);
-						}
-					}
-				});
-			});
-			break;
-		case 'ur': // website url
-			generatedField = t_zeroForms__createInput(elementObj, inputStyles, inputPreferences, 'url');
-			break;
-		case 'tx': // text comment
-			generatedField = document.createElement('div');
-			generatedField.classList.add('t-text');
-			generatedField.setAttribute('field', 'li_text__' + elementObj.lid);
-			generatedField.style.fontWeight = labelStyles.fontWeight;
-			generatedField.style.fontSize = labelStyles.fontSize + 'px';
-			generatedField.style.fontFamily = titleStyles.fontFamily;
-			generatedField.style.color = titleStyles.color;
-			generatedField.style.fontSize = labelStyles.fontSize + 'px';
-			generatedField.innerHTML = elementObj.li_text;
-			break;
-		case 'ws': // white space
-			generatedField = document.createElement('div');
-			generatedField.innerHTML = '&nbsp';
-			if (elementObj.li_rows) generatedField.style.height = elementObj.li_rows * 34 + 'px';
-			break;
-		case 'fr': // formula (calculation field)
-			generatedField = t_zeroForms__createCalculation(elementObj, inputStyles, inputPreferences, titleStyles);
-			if (formObj.inputfrbgcolor) {
-				var calcStyles = document.createElement('style');
-				var calcSelector = t_zeroForms__createSelector(recid, formID, '.t-input-group_fr');
-				calcStyles.textContent =
-					calcSelector + '{background-color:' + formObj.inputfrbgcolor + '; padding: 20px 30px 25px;}';
-				generatedField.insertAdjacentElement('beforeend', calcStyles);
-			}
-			t_zeroForm__onRender(zeroForm, false, function () {
-				t_onFuncLoad('tcalc__init', function () {
-					tcalc__init(recid, elementObj.lid);
-				});
-			});
-			break;
-	}
-
-	if (generatedField) inputBlock.appendChild(generatedField);
-
-	var errorBox = document.createElement('div');
-	errorBox.classList.add('t-input-error');
-	inputBlock.insertAdjacentElement('beforeend', errorBox);
-
-	inputGroup.insertAdjacentElement('beforeend', inputBlock);
-
-	return inputGroup;
-}
-
-function t_zeroForms__generateSubtitle(elementObj, titleStyles, inputGroup) {
-	var exceptTypes = ['rd', 'ri', 'uw', 'uc', 'fr', 'cb'];
-	var isExceptType = exceptTypes.some(function (type) {
-		return type === elementObj.li_type;
-	});
-	var text = document.createElement(elementObj.li_title || isExceptType ? 'div' : 'label');
-	if (text.tagName === 'LABEL') text.style.display = 'block';
-	if (text.tagName === 'LABEL') text.setAttribute('for', elementObj.li_type + '-' + elementObj.lid);
-	text.classList.add('t-input-subtitle');
-	text.classList.add('t-descr');
-	text.classList.add('t-descr_xxs');
-	text.classList.add('t-opacity_70');
-	text.setAttribute('field', 'nullli_subtitle__' + elementObj.lid);
-	text.style.color = titleStyles.color;
-	text.style.fontFamily = titleStyles.fontFamily;
-	text.style.paddingBottom = titleStyles.paddingBottom + 'px';
-	text.textContent = elementObj.li_subtitle;
-	inputGroup.insertAdjacentElement('beforeend', text);
-}
-
-function t_zeroForms__generateTitle(elementObj, titleStyles, inputGroup, titleFontWeight) {
-	var exceptTypes = ['rd', 'ri', 'uw', 'uc', 'fr', 'cb'];
-	var isExceptType = exceptTypes.some(function (type) {
-		return type === elementObj.li_type;
-	});
-	var title = document.createElement(isExceptType ? 'div' : 'label');
-	if (title.tagName === 'LABEL') title.style.display = 'block';
-	if (title.tagName === 'LABEL') title.setAttribute('for', elementObj.li_type + '-' + elementObj.lid);
-	title.classList.add('t-input-title');
-	title.setAttribute('data-redactor-toolbar', 'no');
-	title.setAttribute('field', 'nullli_title__' + elementObj.lid);
-	title.style.color = titleStyles.color;
-	title.style.fontFamily = titleStyles.fontFamily;
-	title.style.fontSize = titleStyles.fontSize + 'px';
-	title.style.paddingBottom = titleStyles.paddingBottom + 'px';
-	title.style.fontWeight = titleFontWeight;
-	title.textContent = elementObj.li_title;
-	inputGroup.insertAdjacentElement('beforeend', title);
-}
-
-function t_zeroForms__createPhoneInput(recid, elementObj, inputStyles, inputPreferences) {
-	var maskType = elementObj.li_masktype;
-	var input = document.createElement('input');
-	if (!elementObj.li_title && !elementObj.li_subtitle) {
-		input.ariaLabel = 'phone';
-	} else {
-		input.id = elementObj.li_type + '-' + elementObj.lid;
-	}
-	t_zeroForms__appendMainSettingToField(input, inputPreferences, 'tel', '');
-	if (maskType === 'a') {
-		input.classList.add('js-phonemask-input');
-	} else if (elementObj.li_mask) input.classList.add('js-tilda-mask');
-
-	if (maskType === 'a') {
-		var browserLangCode = window.t_zeroForms__browserLang === 'RU' ? '+7' : '+1';
-		input.placeholder = browserLangCode + '(999)999-9999';
-		input.setAttribute('data-phonemask-init', 'no');
-		input.setAttribute('data-phonemask-id', recid);
-		input.setAttribute('data-phonemask-lid', elementObj.lid);
-		input.setAttribute('data-phonemask-maskcountry', elementObj.li_maskcountry);
-		if (inputPreferences.secondaryClassName) input.classList.add(inputPreferences.secondaryClassName);
-		if (inputPreferences.require) input.setAttribute('data-tilda-req', '1');
-	} else {
-		t_zeroForms__appendAttributes(input, inputPreferences);
-		input.setAttribute('data-tilda-rule', 'phone');
-		if (inputPreferences.mask) input.setAttribute('data-tilda-mask', inputPreferences.mask);
-	}
-	t_zeroForms__appendStylesToField(input, inputStyles);
-	return input;
-}
-
-function t_zeroForms__createInput(elementObj, inputStyles, inputPreferences, type) {
-	var input = document.createElement(type === 'textarea' ? 'textarea' : 'input');
-	if (!elementObj.li_title && !elementObj.li_subtitle) {
-		input.ariaLabel = type;
-	} else {
-		input.id = elementObj.li_type + '-' + elementObj.lid;
-	}
-	t_zeroForms__appendMainSettingToField(input, inputPreferences, type === 'textarea' ? '' : 'text', '');
-	var tildaRuleTypes = ['name', 'time', 'url', 'email'];
-	var isTildaRuleType = tildaRuleTypes.some(function (tildaRuleType) {
-		return tildaRuleType === type;
-	});
-	if (isTildaRuleType) input.setAttribute('data-tilda-rule', type);
-
-	if (type === 'time') {
-		input.setAttribute('data-tilda-mask', '99:99');
-		input.classList.add('t-inputtime');
-	}
-
-	if (type === 'time' || (type === 'oneline' && elementObj.li_mask)) input.classList.add('js-tilda-mask');
-
-	if (type === 'oneline') {
-		if (inputPreferences.rule) input.setAttribute('data-tilda-rule', inputPreferences.rule);
-		if (inputPreferences.mask) input.setAttribute('data-tilda-mask', inputPreferences.mask);
-	}
-
-	t_zeroForms__appendAttributes(input, inputPreferences);
-	t_zeroForms__appendStylesToField(input, inputStyles);
-
-	if (type === 'textarea') {
-		if (!document.getElementById('zero-forms-textarea-styles')) {
-			var styles = document.createElement('style');
-			styles.id = 'zero-forms-textarea-styles';
-			styles.textContent =
-				'.t396__elem .t-input-group_ta textarea.t-input {padding-top:10px; vertical-align: unset; resize: none;}';
-			document.head.insertAdjacentElement('beforeend', styles);
-		}
-		if (elementObj.li_rows > 1) input.style.height = elementObj.li_rows * 25 + 10 + 'px';
-		input.rows = elementObj.li_rows || '3';
-	}
-	return input;
-}
-
-function t_zeroForms__createSelect(elementObj, inputStyles, inputPreferences) {
-	var options = elementObj.li_variants.split('\n');
-	var selectedOption = parseInt(elementObj.li_defselitem, 10);
-	var inputWrapper = document.createElement('div');
-	inputWrapper.classList.add('t-select__wrapper');
-	if (inputPreferences.secondaryClassName) inputWrapper.classList.add('t-select__wrapper_bbonly');
-
-	var input = document.createElement('select');
-	input.id = elementObj.li_type + '-' + elementObj.lid;
-	t_zeroForms__appendMainSettingToField(input, inputPreferences, '', 't-select');
-	if (inputPreferences.secondaryClassName) input.classList.add('t-select_bbonly');
-	if (inputPreferences.require) input.setAttribute('data-tilda-req', '1');
-	t_zeroForms__appendStylesToField(input, inputStyles);
-
-	if (elementObj.li_selfirstvar) {
-		var firstOption = document.createElement('option');
-		firstOption.textContent = elementObj.li_selfirstvar;
-		input.insertAdjacentElement('beforeend', firstOption);
-	}
-
-	options.forEach(function (option, i) {
-		var optionEl = document.createElement('option');
-		optionEl.value = option;
-		optionEl.textContent = option;
-		if (selectedOption && selectedOption === i + 1) optionEl.selected = true;
-		input.insertAdjacentElement('beforeend', optionEl);
-	});
-
-	inputWrapper.insertAdjacentElement('beforeend', input);
-	return inputWrapper;
-}
-
-function t_zeroForms__createRadio(elementObj, formObj, inputPreferences, labelStyles) {
-	var radioOptions = elementObj.li_variants.split('\n');
-	var isCheckbox = elementObj.li_radcb === 'cb';
-	var selectedOption = parseInt(elementObj.li_defselitem, 10);
-
-	var fragment = document.createDocumentFragment();
-
-	var wrapperClassName = (isCheckbox ? 't-checkboxes' : 't-radio') + '__wrapper';
-	var wrapper = t_zeroForms__createWrapper(wrapperClassName);
-
-	if (isCheckbox) {
-		fragment.appendChild(t_zeroForms__createNameFieldForCheckbox(inputPreferences, wrapper, 'checkboxes'));
-	}
-
-	fragment.appendChild(wrapper);
-
-	var inputType = isCheckbox ? 'checkbox' : 'radio';
-	var fieldSet = document.createElement('fieldset');
-	wrapper.insertAdjacentElement('beforeend', fieldSet);
-	radioOptions.forEach(function (radioOption, i) {
-		var label = t_zeroForms__createLabel(inputType, labelStyles, formObj);
-
-		var input = document.createElement('input');
-		input.type = inputType;
-		input.value = radioOption;
-		input.classList.add('t-' + inputType);
-		if (!isCheckbox) input.classList.add('js-tilda-rule');
-		if (!isCheckbox) input.name = inputPreferences.name;
-		var inputDescription = elementObj.li_title || elementObj.li_subtitle;
-		if (!isCheckbox && inputDescription) input.ariaLabel = inputDescription;
-		if (selectedOption && selectedOption === i + 1) input.checked = true;
-		if (inputPreferences.require) input.setAttribute('data-tilda-req', '1');
-		label.insertAdjacentElement('beforeend', input);
-
-		var indicator = t_zeroForms__createIndicator(inputType, formObj.inputelscolor, false);
-		label.insertAdjacentElement('beforeend', indicator);
-
-		var textValue = document.createElement('span');
-		textValue.textContent = radioOption;
-		label.insertAdjacentElement('beforeend', textValue);
-
-		fieldSet.insertAdjacentElement('beforeend', label);
-	});
-
-	return fragment;
-}
-
-function t_zeroForms__createRadioImage(elementObj, formObj, inputPreferences) {
-	var isCheckbox = elementObj.li_radcb === 'cb';
-	var galleryOptions = elementObj.li_gallery ? JSON.parse(elementObj.li_gallery) : {};
-	if (!galleryOptions.length) return;
-
-	var arrayOfOptions = t_zeroFormsFromObjToArray(galleryOptions);
-	var selectedOption = parseInt(elementObj.li_defselitem, 10);
-
-	var fragment = document.createDocumentFragment();
-
-	var wrapper = t_zeroForms__createWrapper('t-img-select__container');
-	wrapper.setAttribute('data-check-bgcolor', formObj.inputelscolor || '#000');
-
-	if (isCheckbox) {
-		fragment.appendChild(t_zeroForms__createNameFieldForCheckbox(inputPreferences, wrapper, 'img-select'));
-	}
-
-	fragment.appendChild(wrapper);
-
-	var inputType = isCheckbox ? 'checkbox' : 'radio';
-	var ratio = elementObj.li_imgratio ? elementObj.li_imgratio.replace('_', '-') : '1-1';
-	var imgRatioClass = 't-img-select__indicator_' + ratio;
-	arrayOfOptions.forEach(function (imgOption, i) {
-		var label = t_zeroForms__createLabel('img-select', '', false);
-
-		var input = document.createElement('input');
-		input.type = inputType;
-		input.value = imgOption.alt || imgOption.img;
-		input.classList.add('t-img-select');
-		input.name = elementObj.li_nm;
-		if (!isCheckbox) input.classList.add('js-tilda-rule');
-		if (selectedOption && selectedOption === i + 1) input.checked = true;
-		if (inputPreferences.require) input.setAttribute('data-tilda-req', '1');
-		label.insertAdjacentElement('beforeend', input);
-
-		var indicator = t_zeroForms__createIndicator('img-select', false, {ratio: imgRatioClass, img: imgOption.img});
-		indicator.classList.add('t-bgimg');
-		indicator.classList.add('t-img-select__indicator');
-		indicator.classList.add(imgRatioClass);
-		indicator.setAttribute('data-original', imgOption.img);
-		indicator.style.backgroundImage = 'url("' + imgOption.img + '")';
-		label.insertAdjacentElement('beforeend', indicator);
-
-		if (imgOption.alt) {
-			var textElement = document.createElement('div');
-			textElement.classList.add('t-img-select__text');
-			textElement.classList.add('t-text');
-			textElement.classList.add('t-text_xs');
-			textElement.textContent = imgOption.alt;
-			if (formObj.inputtitlecolor) textElement.style.color = formObj.inputtitlecolor;
-			label.insertAdjacentElement('beforeend', textElement);
-		}
-
-		wrapper.insertAdjacentElement('beforeend', label);
-	});
-
-	return fragment;
-}
-
-function t_zeroForms__createCheckbox(elementObj, labelStyles, formObj, inputPreferences) {
-	var label = t_zeroForms__createLabel('checkbox', labelStyles, formObj);
-	var input = document.createElement('input');
-	t_zeroForms__appendMainSettingToField(input, inputPreferences, 'checkbox', 't-checkbox');
-	input.value = 'yes';
-	if (elementObj.li_checked) input.checked = true;
-	if (inputPreferences.require) input.setAttribute('data-tilda-req', '1');
-	label.insertAdjacentElement('beforeend', input);
-
-	var indicator = t_zeroForms__createIndicator('checkbox', formObj.inputelscolor, false);
-	label.insertAdjacentElement('beforeend', indicator);
-
-	var labelText = document.createElement('span');
-	labelText.classList.add('t-checkbox__labeltext');
-	labelText.textContent = elementObj.li_label;
-	label.insertAdjacentElement('beforeend', labelText);
-
-	return label;
-}
-
-function t_zeroForms__createUploadField(elementObj, inputPreferences, type) {
-	var isUpldWidget = type === 'uw';
-	if (window.tildamode !== 'published') {
-		var styles = 'color:#fff;background-color:#000; padding:10px 20px; display:inline-block; margin-bottom:10px;';
-		var editorFileInput = document.createElement('div');
-		editorFileInput.setAttribute('style', styles);
-		var isNeedKey = isUpldWidget && elementObj.li_uwkey === '';
-		editorFileInput.textContent = isNeedKey ? 'Please set the key' : 'Upload button will be here';
-		return editorFileInput;
-	}
-
-	var selector = isUpldWidget ? 't-upwidget' : 't-uploadcare';
-	var wrapper = t_zeroForms__createWrapper(selector);
-	var wrapperStyles = isUpldWidget ? 'margin-bottom:5px;min-height:38px;' : 'margin-bottom:10px;';
-	wrapper.setAttribute('style', wrapperStyles);
-
-	var input = document.createElement('input');
-	t_zeroForms__appendMainSettingToField(input, inputPreferences, 'hidden', '');
-	input.role = isUpldWidget ? 'upwidget-uploader' : 'uploadcare-uploader';
-	if (inputPreferences.require) input.setAttribute('data-tilda-req', '1');
-	input.style.display = 'none';
-	if (isUpldWidget) {
-		input.setAttribute('data-tilda-upwidget-key', elementObj.li_uwkey || '');
-		if (elementObj.li_multiupl === 'y') input.setAttribute('data-tilda-upwidget-multiple', '1');
-	} else {
-		input.setAttribute('data-public-key', elementObj.li_uckey || 'demopublickey');
-	}
-
-	wrapper.insertAdjacentElement('beforeend', input);
-
-	var path = isUpldWidget ? 'tilda-upwidget-1.1.min.js' : 'uploadcare-3.x.min.js';
-	t_zeroForms__setScriptOrStyle(selector + '-zero-form', path, '', 'script', false);
-
-	return wrapper;
-}
-
-function t_zeroForms__createDateField(elementObj, inputPreferences, inputStyles, formObj) {
-	var wrapper = t_zeroForms__createWrapper('t-datepicker__wrapper');
-	var input = document.createElement('input');
-	var datepickerRestrictions =
-		(elementObj.li_dateUnavailPast ? 'past,' : '') +
-		(elementObj.li_dateUnavailMo ? 'mo,' : '') +
-		(elementObj.li_dateUnavailTu ? 'tu,' : '') +
-		(elementObj.li_dateUnavailWe ? 'we,' : '') +
-		(elementObj.li_dateUnavailTh ? 'th,' : '') +
-		(elementObj.li_dateUnavailFr ? 'fr,' : '') +
-		(elementObj.li_dateUnavailSa ? 'sa,' : '') +
-		(elementObj.li_dateUnavailSu ? 'su,' : '') +
-		(elementObj.li_dateUnavailFuture ? 'future' : '');
-	t_zeroForms__appendMainSettingToField(input, inputPreferences, 'text', [
-		't-input',
-		't-datepicker',
-		'js-tilda-mask',
-	]);
-	t_zeroForms__appendAttributes(input, inputPreferences);
-	t_zeroForms__appendStylesToField(input, inputStyles);
-	input.setAttribute('data-tilda-rule', 'date');
-	input.setAttribute('data-tilda-dateformat', elementObj.li_dateformat);
-	input.setAttribute('data-tilda-datediv', elementObj.li_datediv);
-	input.setAttribute('data-tilda-mask', elementObj.li_datemask);
-	input.setAttribute('data-tilda-dateunvailable', datepickerRestrictions);
-	input.id = elementObj.li_type + '-' + elementObj.lid;
-	wrapper.insertAdjacentElement('beforeend', input);
-
-	var svgIconColor = formObj.inputsstyle ? formObj.inputelscolor : inputStyles.color;
-	var svgIcon =
-		'<svg class="t-datepicker__icon" fill="' +
-		svgIconColor +
-		'" xmlns="http://www.w3.org/2000/svg"' +
-		' viewBox="0 0 69.5 76.2" style="width:25px;"><path d="M9.6 42.9H21V31.6H9.6v11.3zm3-8.3H18v5.3h-5.3v-5.3zm16.5' +
-		' 8.3h11.3V31.6H29.1v11.3zm3-8.3h5.3v5.3h-5.3v-5.3zM48 42.9h11.3V31.6H48v11.3zm3-8.3h5.3v5.3H51v-5.3zM9.6' +
-		' 62H21V50.6H9.6V62zm3-8.4H18V59h-5.3v-5.4zM29.1 62h11.3V50.6H29.1V62zm3-8.4h5.3V59h-5.3v-5.4zM48' +
-		' 62h11.3V50.6H48V62zm3-8.4h5.3V59H51v-5.4z"></path><path d="M59.7 6.8V5.3c0-2.9-2.4-5.3-5.3-5.3s-5.3' +
-		' 2.4-5.3 5.3v1.5H40V5.3C40 2.4 37.6 0 34.7 0s-5.3 2.4-5.3 5.3v1.5h-9.1V5.3C20.3 2.4 18 0 15 0c-2.9' +
-		' 0-5.3 2.4-5.3 5.3v1.5H0v69.5h69.5V6.8h-9.8zm-7.6-1.5c0-1.3 1-2.3 2.3-2.3s2.3 1 2.3 2.3v7.1c0 1.3-1' +
-		' 2.3-2.3 2.3s-2.3-1-2.3-2.3V5.3zm-19.7 0c0-1.3 1-2.3 2.3-2.3S37 4 37 5.3v7.1c0' +
-		' 1.3-1 2.3-2.3 2.3s-2.3-1-2.3-2.3V5.3zm-19.6 0C12.8 4 13.8 3 15 3c1.3 0 2.3 1 2.3' +
-		' 2.3v7.1c0 1.3-1 2.3-2.3 2.3-1.3 0-2.3-1-2.3-2.3V5.3zm53.7 67.9H3V9.8h6.8v2.6c0 2.9 2.4 5.3 5.3' +
-		' 5.3s5.3-2.4 5.3-5.3V9.8h9.1v2.6c0 2.9 2.4 5.3 5.3 5.3s5.3-2.4 5.3-5.3V9.8h9.1v2.6c0 2.9 2.4 5.3 5.3' +
-		' 5.3s5.3-2.4 5.3-5.3V9.8h6.8l-.1 63.4z"></path></svg>';
-
-	wrapper.insertAdjacentHTML('beforeend', svgIcon);
-
-	t_zeroForms__setScriptOrStyle('t-zero-date-styles', 'tilda-date-picker-1.0.min.css', '', 'link', false);
-	t_zeroForms__setScriptOrStyle('t-zero-date-script', 'tilda-date-picker-1.0.min.js', '', 'script', false);
-
-	return wrapper;
-}
-
-function t_zeroForms__createQuantityField(elementObj, inputStyles, color, inputPreferences) {
-	var wrapper = t_zeroForms__createWrapper('t-inputquantity__wrapper');
-	var minusBtn = t_zeroForms__createQuanityBtn('minus', color);
-	var plusBtn = t_zeroForms__createQuanityBtn('plus', color);
-	var input = document.createElement('input');
-	t_zeroForms__appendMainSettingToField(input, inputPreferences, 'text', ['t-input', 't-inputquantity']);
-	t_zeroForms__appendAttributes(input, inputPreferences);
-	t_zeroForms__appendStylesToField(input, inputStyles);
-	input.value = elementObj.li_value;
-	input.id = elementObj.li_type + '-' + elementObj.lid;
-	input.setAttribute('data-tilda-rule', 'number');
-
-	wrapper.insertAdjacentElement('beforeend', minusBtn);
-	wrapper.insertAdjacentElement('beforeend', input);
-	wrapper.insertAdjacentElement('beforeend', plusBtn);
-
-	return wrapper;
-}
-
-function t_zeroForms__createQuanityBtn(type, color) {
-	var btn = document.createElement('span');
-	btn.classList.add('t-inputquantity__btn');
-	btn.classList.add('t-inputquantity__btn-' + type);
-	if (color) btn.style.color = color;
-	btn.innerHTML = type === 'minus' ? '&ndash;' : '+';
-	return btn;
-}
-
-function t_zeroForms__createQuantityRange(elementObj, inputStyles, color, inputPreferences) {
-	var wrapper = t_zeroForms__createWrapper('t-range__wrapper');
-	var input = document.createElement('input');
-	t_zeroForms__appendMainSettingToField(input, inputPreferences, 'range', 't-range');
-	if (color) input.setAttribute('data-range-color', color);
-	input.min = elementObj.li_vmin || '0';
-	input.max = elementObj.li_vmax || '10';
-	input.step = elementObj.li_step || '1';
-	input.value = elementObj.li_value;
-	input.style.width = '100%';
-	if (!elementObj.li_title && !elementObj.li_subtitle) {
-		input.ariaLabel = 'range';
-	} else {
-		input.id = elementObj.li_type + '-' + elementObj.lid;
-	}
-	wrapper.insertAdjacentElement('beforeend', input);
-
-	var textField = document.createElement('div');
-	textField.classList.add('t-range__value-txt');
-	textField.classList.add('t-descr');
-	textField.classList.add('t-descr_xxs');
-	textField.style.display = 'none';
-	wrapper.insertAdjacentElement('beforeend', textField);
-
-	var textWrapper = document.createElement('div');
-	textWrapper.classList.add('t-range__interval-txt-wrapper');
-
-	var minValueField = t_zeroForms__createRangeField('min', color, elementObj.li_vmin || '0');
-	var maxValueField = t_zeroForms__createRangeField('max', color, elementObj.li_vmax || '10');
-	textWrapper.insertAdjacentElement('beforeend', minValueField);
-	textWrapper.insertAdjacentElement('beforeend', maxValueField);
-	wrapper.insertAdjacentElement('beforeend', textWrapper);
-
-	t_zeroForms__setScriptOrStyle('t-zero-range-script', 'tilda-range-1.0.min.js', '', 'script', false);
-	t_zeroForms__setScriptOrStyle('t-zero-range-styles', 'tilda-range-1.0.min.css', '', 'link', false);
-
-	return wrapper;
-}
-
-function t_zeroForms__createRangeField(type, color, value) {
-	var textField = document.createElement('div');
-	textField.classList.add('t-range__interval-txt');
-	textField.classList.add('t-range__interval-txt_' + type);
-	textField.classList.add('t-descr');
-	textField.classList.add('t-descr_xxs');
-	if (color) textField.style.color = color;
-	textField.textContent = value;
-	return textField;
-}
-
-function t_zeroForms__createCalculation(elementObj, inputStyles, inputPreferences, titleStyles) {
-	var fragment = document.createDocumentFragment();
-
-	var hiddenInput = document.createElement('input');
-	t_zeroForms__appendMainSettingToField(hiddenInput, inputPreferences, 'hidden', 't-calc__hiddeninput');
-	hiddenInput.tabIndex = -1;
-	hiddenInput.value = '0';
-	fragment.appendChild(hiddenInput);
-
-	var wrapper = t_zeroForms__createWrapper(['t-calc__wrapper', 't-name', 't-name_md']);
-	wrapper.style.color = titleStyles.color;
-	wrapper.style.fontFamily = titleStyles.fontFamily;
-	wrapper.style.fontSize = titleStyles.fontSize + 'px';
-	wrapper.style.fontWeight = titleStyles.fontWeight;
-
-	t_zeroForms__createCalcTextField(elementObj.li_prefix, 'prefix', wrapper);
-
-	var valueField = document.createElement('span');
-	valueField.classList.add('t-calc');
-	valueField.setAttribute('data-calc-expr', t_zeroForms__escape(elementObj.li_expr));
-	valueField.textContent = '0';
-	wrapper.insertAdjacentElement('beforeend', valueField);
-
-	t_zeroForms__createCalcTextField(elementObj.li_postfix, 'postfix', wrapper);
-	t_zeroForms__setScriptOrStyle('t-zero-calc', 'tilda-calc-1.0.min.js', '', 'script', false);
-
-	fragment.appendChild(wrapper);
-
-	if (elementObj.li_addtocart !== 'y') return fragment;
-
-	if (elementObj.li_prod_title) {
-		// prettier-ignore
-		var titleInput = t_zeroForms__createHiddenField(elementObj.li_prod_title, 'prod_title', 't-calc__hidden__prod_title');
-		wrapper.insertAdjacentElement('beforeend', titleInput);
-	}
-	if (elementObj.li_prod_img) {
-		// prettier-ignore
-		var productIMG = t_zeroForms__createHiddenField(elementObj.li_prod_img, 'prod_img', 't-calc__hidden__prod_img');
-		wrapper.insertAdjacentElement('beforeend', productIMG);
-	}
-	return fragment;
-}
-
-function t_zeroForms__createCalcTextField(value, type, wrapper) {
-	if (!value) return;
-	var postfix = document.createElement('span');
-	postfix.classList.add('t-calc__' + type + '-text');
-	postfix.textContent = value;
-	wrapper.insertAdjacentElement('beforeend', postfix);
+*
+* @param {HTMLElement} el - current element
+* @param {string} datastr - textarea value
+* @param {string} recid - record ID
+*/
+function t_zeroForms__renderForm(el, datastr, recid) {
+ if (window.jQuery && el instanceof jQuery) {
+	 el = el.length ? el.get(0) : null;
+ }
+ var record = document.querySelector('.t-records');
+ var isEditMode = record ? record.getAttribute('data-tilda-mode') === 'edit' : false;
+ if (!isEditMode) isEditMode = document.getElementById('for_redactor_toolbar');
+ if (el && el.classList.contains('zero-form-rendered') && !isEditMode) {
+	 t_zeroForms__resizeButton(el);
+	 return;
+ }
+ var oldStyles = document.querySelectorAll('.t-zero-forms-s');
+ Array.prototype.forEach.call(oldStyles, function (oldStyle) {
+	 oldStyle.parentElement.removeChild(oldStyle);
+ });
+ var inputsValues = {};
+ t_zeroForms__saveFormData(el, inputsValues);
+ if (!datastr) {
+	 var elemid = el.getAttribute('data-elem-id');
+	 var datastr = JSON.stringify(window['tn_form__inputsdata__' + recid + '__' + elemid]);
+
+	 if (!datastr) {
+		 var textarea = el.querySelector('.tn-atom__inputs-textarea');
+		 datastr = textarea ? textarea.value : null;
+	 }
+ }
+
+ var data = {};
+ try {
+	 if (datastr) {
+		 data = JSON.parse(datastr);
+	 }
+ } catch (error) {
+	 /* */
+ }
+ if (!recid) recid = '';
+
+ var a = {};
+ var fields = [
+	 'inputpos',
+	 'inputfontfamily',
+	 'inputfontsize',
+	 'inputfontweight',
+	 'inputvariationweight',
+	 'inputcolor',
+	 'inputbgcolor',
+	 'inputbordercolor',
+	 'inputbordersize',
+	 'inputradius',
+	 'inputheight',
+	 'inputmargbottom',
+	 'inputmargright',
+	 'inputtitlefontsize',
+	 'inputtitlefontweight',
+	 'inputtitlevariationweight',
+	 'inputtitlecolor',
+	 'inputelscolor',
+	 'inputelsfontsize',
+	 'inputelsfontweight',
+	 'inputelsvariationweight',
+	 'inputtitlemargbottom',
+	 'inputsstyle',
+	 'inputsstyle2',
+	 'buttontitle',
+	 'buttonalign',
+	 'buttoncolor',
+	 'buttonbgcolor',
+	 'buttonbordercolor',
+	 'buttonbordersize',
+	 'buttonradius',
+	 'buttonmargtop',
+	 'buttonwidth',
+	 'buttonheight',
+	 'buttonshadowsize',
+	 'buttonshadowopacity',
+	 'buttonfontfamily',
+	 'buttonfontsize',
+	 'buttonfontweight',
+	 'buttonvariationweight',
+	 'buttonuppercase',
+	 'buttonbgcolorhover',
+	 'buttoncolorhover',
+	 'buttonbordercolorhover',
+	 'buttonshadowsizehover',
+	 'buttonshadowopacityhover',
+	 'buttonspeedhover',
+	 'formmsgsuccess',
+	 'formmsgurl',
+	 'formerrreq',
+	 'formerremail',
+	 'formerrphone',
+	 'formerrname',
+	 'formbottomtext',
+	 'formbottomcb',
+	 'formname',
+	 'receivers',
+ ];
+ var tildamode = t_zeroForms__getTildaMode();
+ var hasJquery = typeof jQuery === 'function';
+
+ fields.forEach(function (field) {
+	 if (tildamode === 'zero') {
+		 a[field] = elem__getFieldValue(hasJquery ? $(el) : el, field);
+	 } else {
+		 t_onFuncLoad('t396_elem__getFieldValue', function () {
+			 a[field] = t396_elem__getFieldValue(hasJquery ? $(el) : el, field);
+			 if (typeof a[field] == 'undefined') a[field] = '';
+		 });
+	 }
+ });
+
+ var receiversArr = typeof a.receivers !== 'undefined' && a.receivers ? a.receivers.split(',') : [];
+ var inputscounter = 0;
+
+ for (var key in data) {
+	 if (data[key]['loff'] !== 'y' && data[key]['li_type'] !== 'hd') {
+		 inputscounter++;
+	 }
+ }
+
+ var str = '';
+
+ if (tildamode === 'published') {
+	 var recordBlock = el.closest('.r');
+	 recid = recordBlock ? recordBlock.id.replace('rec', '') : '';
+	 str +=
+		 '<form id="form' +
+		 recid +
+		 '" name="form' +
+		 recid +
+		 '" role="form" action="https://forms.tildacdn.com/procces/" method="POST" data-formactiontype="2" data-inputbox=".t-input-group" class="t-form js-form-proccess t-form_inputs-total_' +
+		 inputscounter +
+		 ' ' +
+		 (a.inputsstyle ? 't-form_bbonly' : '') +
+		 ' ' +
+		 (a.inputpos === 'h' ? 'tn-form_horiz' : '') +
+		 '" ' +
+		 (a.formmsgurl ? 'data-success-url="' + a.formmsgurl + '"' : '') +
+		 ' data-success-callback="t396_onSuccess" data-success-popup="y" data-error-popup="y">';
+ } else {
+	 str +=
+		 '<div class="t-form t-form_inputs-total_' +
+		 inputscounter +
+		 ' ' +
+		 (a.inputsstyle ? 't-form_bbonly' : '') +
+		 ' ' +
+		 (a.inputpos === 'h' ? 'tn-form_horiz' : '') +
+		 '">';
+ }
+
+ for (var z = 0; z < receiversArr.length; z++) {
+	 if (typeof receiversArr[z] !== 'undefined' && receiversArr[z]) {
+		 str +=
+			 '<input type="hidden" name="formservices[]" value="' +
+			 receiversArr[z] +
+			 '" class="js-formaction-services">';
+	 }
+ }
+
+ if (a.formname) {
+	 str += '<input type="hidden" name="tildaspec-formname" tabindex="-1" value="' + a.formname + '">';
+ }
+
+ str +=
+	 '<div class="js-successbox t-form__successbox t-text t-text_sm" style="display:none;">' +
+	 a.formmsgsuccess +
+	 '</div>';
+
+ str += '<div class="t-form__inputsbox">';
+
+ var itemscounter = 0;
+ var scripts = [];
+
+ for (var key in data) {
+	 if (data[key]['loff'] === 'y' || !data[key]['li_type']) {
+		 str += '';
+	 } else {
+		 itemscounter++;
+		 var parsedObj = t_zeroForms__getFormInputHtml(el, data[key], itemscounter, a, recid);
+		 str += parsedObj.string;
+		 var script = parsedObj.script;
+		 script.forEach(function (scr) {
+			 if (scr) {
+				 scripts.push(scr);
+			 }
+		 });
+	 }
+ }
+
+ str += '<div class="t-form__errorbox-middle">';
+ str += t_zeroForms__getErrorBoxHtml(el, a);
+ str += '</div>';
+
+ str += t_zeroForms__getFormButtonHtml(el, a);
+
+ str += '</div>';
+
+ if (typeof a.formbottomtext !== 'undefined' && a.formbottomtext) {
+	 str +=
+		 '<div class="t-form__bottom-text t-text" style="margin-top:15px;font-size:13px;' +
+		 (a.buttonalign === 'center' ? 'text-align:center;' : 'text-align:left;') +
+		 (a.inputtitlecolor ? 'color:' + a.inputtitlecolor + ';' : '') +
+		 (a.inputtitlefontweight ? 'font-weight:' + a.inputtitlefontweight + ';' : '') +
+		 (a.inputfontfamily ? 'font-family:' + a.inputfontfamily + ';' : '') +
+		 '">';
+	 str += t_zeroForms__getBottomText(el, a, recid);
+	 str += '</div>';
+ }
+
+ str += '<div class="t-form__errorbox-bottom">';
+ str += t_zeroForms__getErrorBoxHtml(el, a);
+ str += '</div>';
+
+ str +=
+	 '<div style="position: absolute; left: -5000px; bottom: 0; display: none;"><input type="text" name="form-spec-comments" value="Its good" class="js-form-spec-comments" tabindex="-1"></div>';
+
+ if (tildamode === 'published') {
+	 str += '</form>';
+ } else {
+	 str += '</div>';
+ }
+
+ if (a.inputcolor) {
+	 str += t_zeroForms__getInputPlaceholderStyles(el, a, recid);
+ }
+
+ if (a.inputpos === 'h') {
+	 str += t_zeroForms__getHorizStyles();
+ }
+
+ if (a.inputsstyle2 === 'y') {
+	 setTimeout(function () {
+		 t_zeroForms__animateInputs(el, a, recid);
+	 }, 2000);
+ }
+
+ str += t_zeroForms__getCommonStyles();
+ var atomList = el.querySelectorAll('.tn-atom');
+ Array.prototype.forEach.call(atomList, function (atom) {
+	 atom.innerHTML = str;
+ });
+
+ scripts.forEach(function (script) {
+	 if (script) {
+		 document.body.insertAdjacentElement('beforeend', script);
+	 }
+ });
+
+ if (tildamode === 'preview' || tildamode === 'published') {
+	 try {
+		 window.tildaForm_initMasks();
+	 } catch (err) {
+		 /* */
+	 }
+ }
+
+ if (tildamode !== 'preview') {
+	 var multiLandingBlocks = document.querySelectorAll('.t803');
+	 Array.prototype.forEach.call(multiLandingBlocks, function (multiLandingBlock) {
+		 var multilandRecID = multiLandingBlock.closest('.r')
+			 ? multiLandingBlock.closest('.r').id.replace('rec', '')
+			 : '';
+		 // eslint-disable-next-line no-undef
+		 if (multilandRecID) t803_init(multilandRecID);
+	 });
+ }
+
+ t_zeroForms__setFormData(el, inputsValues);
+
+ var customElEvent = document.createEvent('Event');
+ customElEvent.initEvent('render', true, true);
+ el.dispatchEvent(customElEvent);
+ el.classList.add('zero-form-rendered');
 }
 
 /**
- * create submit button for current form
- *
- * @param {string} recid - record ID
- * @param {HTMLElement} zeroForm - current zeroForm
- * @param {string} formID - form ID
- * @param {formObj} formObj - obj with params
- * @returns {HTMLElement}
- */
-function t_zeroForms__createFormButton(recid, zeroForm, formID, formObj) {
-	// prettier-ignore
-	var btnFontWeight = formObj.buttonfontweight === 'variation' ? formObj.buttonvariationweight : formObj.buttonfontweight;
-	var btnWrapper = document.createElement('div');
-	btnWrapper.classList.add('tn-form__submit');
-	btnWrapper.style.textAlign = formObj.buttonalign;
-	btnWrapper.style.marginTop = formObj.buttonmargtop;
+* parse from into HTML
+*
+* @param {HTMLElement} el - current element
+* @param {Object} item - object item
+* @param {number} itemscounter - counter
+* @param {Object} a - object
+* @param {string} recid - record ID
+* @returns {{string: string, script: *[]}}
+*/
+function t_zeroForms__getFormInputHtml(el, item, itemscounter, a, recid) {
+ var str = '';
+ var i;
+ var script = null;
+ var scriptText = '';
+ var scripts = [];
+ var itemKeys = [
+	 'li_ph',
+	 'li_nm',
+	 'li_req',
+	 'li_value',
+	 'li_mask',
+	 'li_title',
+	 'li_subtitle',
+	 'li_rule',
+	 'li_vmin',
+	 'li_vmax',
+	 'li_rows',
+	 'li_selfirstvar',
+	 'li_defselitem',
+	 'li_variants',
+	 'li_radcb',
+	 'li_checked',
+	 'li_uckey',
+	 'li_inp',
+	 'li_dateformat',
+	 'li_datediv',
+	 'li_text',
+	 'li_prefix',
+	 'li_expr',
+	 'li_postfix',
+	 'li_multiupl',
+	 'li_uwkey',
+	 'li_step',
+ ];
 
-	var btn = document.createElement('button');
-	btn.type = 'submit';
-	btn.classList.add('t-submit');
-	btn.style.width = formObj.buttonwidth ? formObj.buttonwidth + 'px' : '100%';
-	if (btnFontWeight) btn.style.fontWeight = btnFontWeight;
-	if (formObj.buttonheight) btn.style.height = formObj.buttonheight + 'px';
-	if (formObj.buttonalign === 'center') {
-		btn.style.marginLeft = 'auto';
-		btn.style.marginRight = 'auto';
-	}
-	btn.style.padding = '0 15px';
-	btn.style.display = 'block';
-	btn.textContent = formObj.buttontitle;
+ itemKeys.forEach(function (key) {
+	 if (typeof item[key] === 'undefined') item[key] = '';
+ });
 
-	if (formObj.buttonshadowsize || formObj.buttonshadowopacity) {
-		btn.style.boxShadow =
-			'0px 0px ' +
-			(formObj.buttonshadowsize ? formObj.buttonshadowsize + 'px' : '10px') +
-			' 0px rgba(0, 0, 0, ' +
-			(formObj.buttonshadowopacity ? formObj.buttonshadowopacity / 100 : '0.3') +
-			')';
-	}
+ if (item.li_type && item.li_type !== 'hd') {
+	 str +=
+		 '<div class="t-input-group t-input-group_' +
+		 item.li_type +
+		 '" data-input-lid="' +
+		 item.lid +
+		 '" style="' +
+		 (a.inputmargbottom ? 'margin-bottom:' + a.inputmargbottom + 'px;' : '') +
+		 '' +
+		 (a.inputmargright && a.inputpos === 'h' ? 'padding-right:' + a.inputmargright + 'px;' : '') +
+		 '">';
 
-	btnWrapper.insertAdjacentElement('beforeend', btn);
+	 var fontInputWeight = a.inputfontweight === 'variation' ? a.inputvariationweight : a.inputfontweight;
+	 var fontInputElsWeight =
+		 a.inputelsfontweight === 'variation' ? a.inputelsvariationweight : a.inputelsfontweight;
+	 var fontInputTitleWeight =
+		 a.inputtitlefontweight === 'variation' ? a.inputtitlevariationweight : a.inputtitlefontweight;
 
-	t_zeroForm__onRender(zeroForm, false, function () {
-		var btnFontFamily = window.getComputedStyle(btn).fontFamily;
-		var buttonStyles = t_zeroForms__generateButtonStyles(formObj, btnFontFamily);
-		var hasUploadCare = document.getElementById('t-uploadcare-zero-form');
-		var hasUploadWidget = document.getElementById('t-upwidget-zero-form');
-		var baseSelector = t_zeroForms__createSelector(recid, formID, '');
-		if (window.tildamode !== 'published') baseSelector = '[data-elem-id="' + formID + '"] ';
+	 var input_style =
+		 (a.inputcolor ? 'color:' + a.inputcolor + ';' : '') +
+		 ' ' +
+		 (a.inputbordersize || a.inputbordercolor
+			 ? 'border:' +
+				 (a.inputbordersize ? a.inputbordersize + 'px' : '0px') +
+				 ' solid ' +
+				 (a.inputbordercolor ? a.inputbordercolor : '#000') +
+				 ';'
+			 : '') +
+		 ' ' +
+		 (a.inputbgcolor ? 'background-color:' + a.inputbgcolor + ';' : 'background-color:transparent;') +
+		 ' ' +
+		 (a.inputradius
+			 ? 'border-radius:' +
+				 a.inputradius +
+				 'px; -moz-border-radius:' +
+				 a.inputradius +
+				 'px; -webkit-border-radius:' +
+				 a.inputradius +
+				 'px;'
+			 : '') +
+		 (a.inputfontsize ? 'font-size:' + a.inputfontsize + 'px;' : '') +
+		 (fontInputWeight ? 'font-weight:' + fontInputWeight + ';' : '') +
+		 (a.inputheight ? 'height:' + a.inputheight + 'px;' : '');
+	 var inputName = 'name="' + item.li_nm + '"';
+	 var input_ph = item.li_ph ? 'placeholder="' + item.li_ph + '"' : '';
+	 var input_req = item.li_req === 'y' ? 'data-tilda-req="1"' : '';
+	 var input_bbonly = a.inputsstyle ? 't-input_bbonly' : '';
+	 var inputTextStyles =
+		 (a.inputcolor ? 'color:' + a.inputcolor + ';' : '') +
+		 (a.inputfontfamily ? 'font-family:' + a.inputfontfamily + ';' : '') +
+		 (a.inputfontsize ? 'font-size:' + a.inputfontsize + 'px;' : '') +
+		 (fontInputWeight ? 'font-weight:' + fontInputWeight + ';' : '');
+	 var input_txtlbl_style =
+		 (a.inputtitlecolor ? 'color:' + a.inputtitlecolor + ';' : '') +
+		 ' ' +
+		 (a.inputelsfontsize ? 'font-size:' + a.inputelsfontsize + 'px;' : '') +
+		 (fontInputElsWeight ? 'font-weight:' + fontInputElsWeight + ';' : '') +
+		 (a.inputfontfamily ? 'font-family:' + a.inputfontfamily + ';' : '');
 
-		var selector = baseSelector + '.t-submit';
-		if (hasUploadCare) {
-			selector += ', ';
-			selector += baseSelector + '.uploadcare--widget__button.uploadcare--widget__button_type_open';
-		}
-		if (hasUploadWidget) {
-			selector += ', ';
-			selector += baseSelector + '.t-upwidget-container__button';
-		}
-		var styleValue = selector + '{' + buttonStyles + '}';
-		t_zeroForms__setScriptOrStyle('t-zero-form-btn-styles-' + formID, '', styleValue, 'style', zeroForm);
-	});
+	 if (item.li_title) {
+		 str +=
+			 '<div class="t-input-title" data-redactor-toolbar="no" field="nullli_title__' +
+			 item.lid +
+			 '" style="' +
+			 (a.inputtitlecolor ? 'color:' + a.inputtitlecolor + ';' : '') +
+			 (fontInputTitleWeight ? 'font-weight:' + fontInputTitleWeight + ';' : '') +
+			 (a.inputfontfamily ? "font-family:'" + a.inputfontfamily + "';" : '') +
+			 (a.inputtitlefontsize ? 'font-size:' + a.inputtitlefontsize + 'px;' : '') +
+			 (a.inputtitlemargbottom ? 'padding-bottom:' + a.inputtitlemargbottom + 'px;' : '') +
+			 '">' +
+			 item.li_title +
+			 '</div>';
+	 }
+	 if (item.li_subtitle) {
+		 str +=
+			 '<div class="t-input-subtitle t-descr t-descr_xxs t-opacity_70" field="nullli_subtitle__' +
+			 item.lid +
+			 '" style="' +
+			 (a.inputtitlecolor ? 'color:' + a.inputtitlecolor + ';' : '') +
+			 (a.inputfontfamily ? 'font-family:' + a.inputfontfamily + ';' : '') +
+			 (a.inputtitlemargbottom ? 'padding-bottom:' + a.inputtitlemargbottom + 'px;' : '') +
+			 '">' +
+			 item.li_subtitle +
+			 '</div>';
+	 }
+	 str += '<div class="t-input-block">';
+	 if (item.li_type === 'in') {
+		 str +=
+			 '<input type="text" ' +
+			 inputName +
+			 ' class="t-input js-tilda-rule ' +
+			 (item.li_mask ? 'js-tilda-mask' : '') +
+			 ' ' +
+			 input_bbonly +
+			 '" value="" ' +
+			 input_ph +
+			 ' ' +
+			 input_req +
+			 ' ' +
+			 (item.li_rule ? 'data-tilda-rule="' + item.li_rule + '"' : '') +
+			 ' ' +
+			 (item.li_mask ? 'data-tilda-mask="' + item.li_mask + '"' : '') +
+			 ' style="' +
+			 input_style +
+			 '">';
+	 } else if (item.li_type === 'em') {
+		 str +=
+			 '<input type="text" ' +
+			 inputName +
+			 ' class="t-input js-tilda-rule ' +
+			 input_bbonly +
+			 '" value="" ' +
+			 input_ph +
+			 ' ' +
+			 input_req +
+			 ' data-tilda-rule="email" style="' +
+			 input_style +
+			 '">';
+	 } else if (item.li_type === 'ph') {
+		 if (item.li_masktype === 'a') {
+			 if (!recid) {
+				 recid = el.closest('.r') ? el.closest('.r').id : '';
+			 }
+			 if (!recid) {
+				 recid = el.closest('.tn-artboard') ? el.closest('.tn-artboard').getAttribute('data-record-id') : '';
+			 }
+			 recid = recid ? recid.replace('rec', '') : '';
+			 str +=
+				 '<input type="tel" ' +
+				 inputName +
+				 ' data-phonemask-init="no" data-phonemask-id="' +
+				 recid +
+				 '" data-phonemask-lid="' +
+				 item.lid + '"' +
+				 (item.li_maskcountry ? ' data-phonemask-maskcountry="' + item.li_maskcountry + '"' : '')
+				 + ' class="t-input js-tilda-rule js-phonemask-input ' +
+				 input_bbonly +
+				 '" placeholder="' +
+				 (window.t_zeroForms__browserLang === 'RU' ? '+7' : '+1') +
+				 '(999)999-9999" value="" ' +
+				 input_ph +
+				 ' ' +
+				 input_req +
+				 ' style="' +
+				 input_style +
+				 '">';
 
-	return btnWrapper;
+			 script = document.createElement('script');
+			 script.classList.add('t-zero-forms-s');
+			 //@formatter:off
+			 scriptText = '';
+			 scriptText += 'if (!document.getElementById("t-phonemask-script")) {';
+			 scriptText += '(function (d, w, o) {';
+			 scriptText +=
+				 'var n=d.getElementsByTagName(o)[0],s=d.createElement(o),f=function(){n.parentNode.insertBefore(s,n);};';
+			 scriptText += 's.type = "text/javascript";';
+			 scriptText += 's.async = true;';
+			 scriptText += 's.id = "t-phonemask-script";';
+			 scriptText += 's.src="https://static.tildacdn.com/js/tilda-phone-mask-1.1.min.js";';
+			 scriptText +=
+				 'if (w.opera=="[object Opera]") {d.addEventListener("DOMContentLoaded", f, false);} else {f();}';
+			 scriptText +=
+				 'if (w.opera=="[object Opera]") {d.addEventListener("DOMContentLoaded", f, false);} else {f();}';
+			 scriptText += '})(document, window, "script");';
+			 scriptText += '} else {';
+			 scriptText += 'setTimeout(function() {';
+			 scriptText += 'try {';
+			 scriptText += 'if (typeof t_form_phonemask_load == "function") {';
+			 scriptText +=
+				 'var phoneMaskInputLidList = document.querySelectorAll("#rec' + recid + ' .js-phonemask-input[data-phonemask-lid=\'' +
+				 item.lid +
+				 '\']");';
+			 scriptText +=
+				 'Array.prototype.forEach.call(phoneMaskInputLidList, function(phoneMask) { t_form_phonemask_load(phoneMask); });';
+			 scriptText += '}';
+			 scriptText += '} catch(err) {console.log(err);};';
+			 scriptText += '}, 500);';
+			 scriptText += '}';
+			 //@formatter:on
+			 script.textContent = scriptText;
+			 scripts.push(script);
+		 } else {
+			 str +=
+				 '<input type="tel" ' +
+				 inputName +
+				 ' class="t-input js-tilda-rule ' +
+				 (item.li_mask ? 'js-tilda-mask' : '') +
+				 ' ' +
+				 input_bbonly +
+				 '" value="" ' +
+				 input_ph +
+				 ' ' +
+				 input_req +
+				 ' data-tilda-rule="phone" ' +
+				 (item.li_mask ? 'data-tilda-mask="' + item.li_mask + '"' : '') +
+				 ' style="' +
+				 input_style +
+				 '">';
+		 }
+	 } else if (item.li_type === 'nm') {
+		 str +=
+			 '<input type="text" ' +
+			 inputName +
+			 ' class="t-input js-tilda-rule ' +
+			 input_bbonly +
+			 '" value="" ' +
+			 input_ph +
+			 ' ' +
+			 input_req +
+			 ' data-tilda-rule="name" style="' +
+			 input_style +
+			 '">';
+	 } else if (item.li_type === 'ta') {
+		 str +=
+			 '<textarea ' +
+			 inputName +
+			 ' class="t-input js-tilda-rule ' +
+			 input_bbonly +
+			 '" ' +
+			 input_ph +
+			 ' ' +
+			 input_req +
+			 ' style="' +
+			 input_style +
+			 ' ' +
+			 (item.li_rows > 1 ? 'height:' + (item.li_rows * 25 + 10) + 'px' : '') +
+			 '; padding-top:10px; vertical-align: unset; resize: none;" rows="' +
+			 (item.li_rows > 0 ? item.li_rows : '3') +
+			 '"></textarea>';
+	 } else if (item.li_type === 'sb') {
+		 var sb = item.li_variants.split('\n');
+		 str += '<div class="t-select__wrapper ' + (a.inputsstyle ? 't-select__wrapper_bbonly' : '') + '">';
+		 str +=
+			 '<select ' +
+			 inputName +
+			 ' class="t-select js-tilda-rule ' +
+			 (a.inputsstyle ? 't-select_bbonly' : '') +
+			 '" ' +
+			 input_req +
+			 ' style="' +
+			 input_style +
+			 '">';
+		 if (item.li_selfirstvar) {
+			 str += '<option value="">' + item.li_selfirstvar + '</option>';
+		 }
+		 for (i = 0; i < sb.length; i++) {
+			 str +=
+				 '<option value="' +
+				 sb[i] +
+				 '" ' +
+				 (parseInt(item.li_defselitem, 10) > 0
+					 ? parseInt(item.li_defselitem, 10) === i + 1
+						 ? 'selected="selected"'
+						 : ''
+					 : '') +
+				 '>' +
+				 sb[i] +
+				 '</option>';
+		 }
+		 str += '</select>';
+		 if (a.inputelscolor) {
+			 str += '<style>';
+			 str +=
+				 '.tn-elem[data-elem-id="' +
+				 (el.getAttribute('data-elem-id') ? el.getAttribute('data-elem-id') : '') +
+				 '"] .t-select__wrapper:after {';
+			 str += 'border-top-color:' + a.inputelscolor + ';';
+			 str += '}';
+			 str += '</style>';
+		 }
+		 str += '</div>';
+	 } else if (item.li_type === 'rd') {
+		 var rd = item.li_variants.split('\n');
+		 if (item.li_radcb === 'cb') {
+			 str +=
+				 '<input type="hidden" class="t-checkboxes__hiddeninput js-tilda-rule" ' +
+				 inputName +
+				 ' tabindex="-1" value="" ' +
+				 input_req +
+				 '>';
+			 str += '<div class="t-checkboxes__wrapper">';
+			 for (i = 0; i < rd.length; i++) {
+				 str += '<label class="t-checkbox__control" style="' + input_txtlbl_style + '">';
+				 str +=
+					 '<input type="checkbox" value="' +
+					 rd[i] +
+					 '" class="t-checkbox" ' +
+					 (+item.li_defselitem > 0 ? (+item.li_defselitem === +i + 1 ? 'checked="checked"' : '') : '') +
+					 ' ' +
+					 input_req +
+					 '><div class="t-checkbox__indicator" ' +
+					 (a.inputelscolor ? 'style="border-color:' + a.inputelscolor + ';"' : '') +
+					 '></div>' +
+					 rd[i] +
+					 '</label>';
+			 }
+			 str += '</div>';
+
+			 recid = el.closest('.r') ? el.closest('.r').id : '';
+			 recid = recid ? recid.replace('rec', '') : '';
+			 var currentElID = el.getAttribute('data-elem-id');
+
+			 script = document.createElement('script');
+			 script.classList.add('t-zero-forms-s');
+			 // script.textContent = `t_zero__onReady(function() {
+			 // 		function t_input_checkboxes_updateval(inputList) {
+			 // 			var checkedCheckboxes = Array.prototype.slice.call(inputList.querySelectorAll('.t-checkbox:checked'));
+			 // 			var value = '';
+			 // 			checkedCheckboxes.forEach((checkbox) => {
+			 // 				if (value) value += '; ';
+			 // 				value += checkbox.value;
+			 // 			});
+			 // 			var hiddenInput = inputList.querySelector('.t-checkboxes__hiddeninput');
+			 // 			if (hiddenInput) hiddenInput.value = value;
+			 // 		}
+			 // 		function t_input_checkboxes_init(recid, lid, elemid) {
+			 // 			var record = document.getElementById('rec' + recid);
+			 // 			var elemForm = record ? record.querySelector('[data-elem-id="'+elemid+'"]') : null;
+			 // 			if (!elemForm) return;
+			 // 			var inputList = elemForm.querySelector('[data-input-lid="'+lid+'"]');
+			 // 			var checkboxes = Array.prototype.slice.call(inputList.querySelectorAll('.t-checkbox'));
+			 // 			checkboxes.forEach((checkbox) => {
+			 // 				checkbox.addEventListener('input', () => {
+			 // 					t_input_checkboxes_updateval(inputList);
+			 // 				});
+			 // 			});
+			 // 			t_input_checkboxes_updateval(inputList);
+			 // 		}
+			 // 		t_input_checkboxes_init('${recid}', '${item.lid}', '${currentElID}');
+			 // 	});`;
+
+			 // transform via Babel
+			 script.textContent =
+				 "t_zero__onReady(function() {\n\t\t\t\t\t\tfunction t_input_checkboxes_updateval(inputList) {\n\t\t\t\t\t\t\tvar checkedCheckboxes = Array.prototype.slice.call(inputList.querySelectorAll('.t-checkbox:checked'));\n\t\t\t\t\t\t\tvar value = '';\n\t\t\t\t\t\t\tcheckedCheckboxes.forEach((checkbox) => {\n\t\t\t\t\t\t\t\tif (value) value += '; ';\n\t\t\t\t\t\t\t\tvalue += checkbox.value;\n\t\t\t\t\t\t\t});\n\t\t\t\t\t\t\tvar hiddenInput = inputList.querySelector('.t-checkboxes__hiddeninput');\n\t\t\t\t\t\t\tif (hiddenInput) hiddenInput.value = value;\n\t\t\t\t\t\t}\n\t\t\t\t\t\tfunction t_input_checkboxes_init(recid, lid, elemid) {\n\t\t\t\t\t\t\tvar record = document.getElementById('rec' + recid);\n\t\t\t\t\t\t\tvar elemForm = record ? record.querySelector('[data-elem-id=\"'+elemid+'\"]') : null;\n\t\t\t\t\t\t\tif (!elemForm) return;\n\t\t\t\t\t\t\tvar inputList = elemForm.querySelector('[data-input-lid=\"'+lid+'\"]');\n\t\t\t\t\t\t\tvar checkboxes = Array.prototype.slice.call(inputList.querySelectorAll('.t-checkbox'));\n\t\t\t\t\t\t\tcheckboxes.forEach((checkbox) => {\n\t\t\t\t\t\t\t\tcheckbox.addEventListener('input', () => {\n\t\t\t\t\t\t\t\t\tt_input_checkboxes_updateval(inputList);\n\t\t\t\t\t\t\t\t});\n\t\t\t\t\t\t\t});\n\t\t\t\t\t\t\tt_input_checkboxes_updateval(inputList);\n\t\t\t\t\t\t}\n\t\t\t\t\t\tt_input_checkboxes_init('"
+					 .concat(recid, "', '")
+					 .concat(item.lid, "', '")
+					 .concat(currentElID, "');\n\t\t\t\t\t});");
+			 scripts.push(script);
+
+			 if (a.inputelscolor) {
+				 str += '<style>';
+				 str +=
+					 '#rec' +
+					 recid +
+					 ' .tn-elem[data-elem-id="' +
+					 (el.getAttribute('data-elem-id') ? el.getAttribute('data-elem-id') : '') +
+					 '"] .t-checkbox__indicator:after {';
+				 str += 'border-color:' + a.inputelscolor + ';';
+				 str += '}';
+				 str += '</style>';
+			 }
+		 } else {
+			 str += '<div class="t-radio__wrapper">';
+			 for (i = 0; i < rd.length; i++) {
+				 str += '<label class="t-radio__control" style="' + input_txtlbl_style + '">';
+				 str +=
+					 '<input type="radio" ' +
+					 inputName +
+					 ' value="' +
+					 rd[i] +
+					 '" ' +
+					 (+item.li_defselitem > 0 ? (+item.li_defselitem === i + 1 ? 'checked="checked"' : '') : '') +
+					 ' ' +
+					 input_req +
+					 ' class="t-radio js-tilda-rule"><div class="t-radio__indicator" ' +
+					 (a.inputelscolor ? 'style="border-color:' + a.inputelscolor + ';"' : '') +
+					 '></div>' +
+					 rd[i] +
+					 '</label>';
+			 }
+			 if (a.inputelscolor) {
+				 str += '<style>';
+				 str +=
+					 '.tn-elem[data-elem-id="' +
+					 (el.getAttribute('data-elem-id') ? el.getAttribute('data-elem-id') : '') +
+					 '"] .t-radio__indicator:after {';
+				 str += 'background:' + a.inputelscolor + ';';
+				 str += '}';
+				 str += '</style>';
+			 }
+			 str += '</div>';
+		 }
+	 } else if (item.li_type === 'cb') {
+		 str += '<label class="t-checkbox__control" style="' + input_txtlbl_style + '">';
+		 str +=
+			 '<input type="checkbox" ' +
+			 inputName +
+			 ' value="yes" class="t-checkbox js-tilda-rule" ' +
+			 (item.li_checked === 'y' ? 'checked' : '') +
+			 ' ' +
+			 input_req +
+			 '><div class="t-checkbox__indicator" ' +
+			 (a.inputelscolor ? 'style="border-color:' + a.inputelscolor + ';"' : '') +
+			 '></div><div class="t-checkbox__labeltext" style="display:inline;">' +
+			 item.li_label +
+			 '</div></label>';
+		 if (a.inputelscolor) {
+			 str += '<style>';
+			 str +=
+				 '#rec' +
+				 recid +
+				 ' .tn-elem[data-elem-id="' +
+				 (el.getAttribute('data-elem-id') ? el.getAttribute('data-elem-id') : '') +
+				 '"] .t-checkbox__indicator:after {';
+			 str += 'border-color:' + a.inputelscolor + ';';
+			 str += '}';
+			 str += '</style>';
+		 }
+	 } else if (item.li_type === 'da') {
+		 str += '<div class="t-datepicker__wrapper">';
+		 str +=
+			 '<input type="text" ' +
+			 inputName +
+			 ' class="t-input t-datepicker js-tilda-rule js-tilda-mask ' +
+			 input_bbonly +
+			 '" value="" ' +
+			 input_ph +
+			 ' ' +
+			 input_req +
+			 ' data-tilda-rule="date" data-tilda-dateformat="' +
+			 item.li_dateformat +
+			 '" data-tilda-datediv="' +
+			 item.li_datediv +
+			 '" data-tilda-dateunvailable="' +
+			 (item.li_dateUnavailPast ? 'past,' : '') +
+			 (item.li_dateUnavailMo ? 'mo,' : '') +
+			 (item.li_dateUnavailTu ? 'tu,' : '') +
+			 (item.li_dateUnavailWe ? 'we,' : '') +
+			 (item.li_dateUnavailTh ? 'th,' : '') +
+			 (item.li_dateUnavailFr ? 'fr,' : '') +
+			 (item.li_dateUnavailSa ? 'sa,' : '') +
+			 (item.li_dateUnavailSu ? 'su,' : '') +
+			 (item.li_dateUnavailFuture ? 'future,' : '') +
+			 (item.li_dateUnavailToday ? 'today' : '') +
+			 '" data-tilda-mask="' +
+			 item.li_datemask +
+			 '" style="' +
+			 input_style +
+			 '">';
+		 str +=
+			 '<svg class="t-datepicker__icon ' +
+			 (a.inputsstyle ? 't-datepicker__icon_bbonly' : '') +
+			 '" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 69.5 76.2" style="width:25px;' +
+			 (a.inputelscolor ? 'fill:' + a.inputelscolor + ';' : '') +
+			 '">';
+		 str +=
+			 '<path d="M9.6 42.9H21V31.6H9.6v11.3zm3-8.3H18v5.3h-5.3v-5.3zm16.5 8.3h11.3V31.6H29.1v11.3zm3-8.3h5.3v5.3h-5.3v-5.3zM48 42.9h11.3V31.6H48v11.3zm3-8.3h5.3v5.3H51v-5.3zM9.6 62H21V50.6H9.6V62zm3-8.4H18V59h-5.3v-5.4zM29.1 62h11.3V50.6H29.1V62zm3-8.4h5.3V59h-5.3v-5.4zM48 62h11.3V50.6H48V62zm3-8.4h5.3V59H51v-5.4z"/>';
+		 str +=
+			 '<path d="M59.7 6.8V5.3c0-2.9-2.4-5.3-5.3-5.3s-5.3 2.4-5.3 5.3v1.5H40V5.3C40 2.4 37.6 0 34.7 0s-5.3 2.4-5.3 5.3v1.5h-9.1V5.3C20.3 2.4 18 0 15 0c-2.9 0-5.3 2.4-5.3 5.3v1.5H0v69.5h69.5V6.8h-9.8zm-7.6-1.5c0-1.3 1-2.3 2.3-2.3s2.3 1 2.3 2.3v7.1c0 1.3-1 2.3-2.3 2.3s-2.3-1-2.3-2.3V5.3zm-19.7 0c0-1.3 1-2.3 2.3-2.3S37 4 37 5.3v7.1c0 1.3-1 2.3-2.3 2.3s-2.3-1-2.3-2.3V5.3zm-19.6 0C12.8 4 13.8 3 15 3c1.3 0 2.3 1 2.3 2.3v7.1c0 1.3-1 2.3-2.3 2.3-1.3 0-2.3-1-2.3-2.3V5.3zm53.7 67.9H3V9.8h6.8v2.6c0 2.9 2.4 5.3 5.3 5.3s5.3-2.4 5.3-5.3V9.8h9.1v2.6c0 2.9 2.4 5.3 5.3 5.3s5.3-2.4 5.3-5.3V9.8h9.1v2.6c0 2.9 2.4 5.3 5.3 5.3s5.3-2.4 5.3-5.3V9.8h6.8l-.1 63.4z"/>';
+		 str += '</svg>';
+		 str += '</div>';
+		 str += '<link rel="stylesheet" href="https://static.tildacdn.com/css/tilda-date-picker-1.0.min.css">';
+
+		 recid = el.closest('.r') ? el.closest('.r').id : '';
+		 if (!recid) {
+			 recid = el.closest('.tn-artboard') ? el.closest('.tn-artboard').getAttribute('data-record-id') : '';
+		 }
+		 recid = recid ? recid.replace('rec', '') : '';
+		 var elemid = el.getAttribute('data-elem-id') ? el.getAttribute('data-elem-id') : '';
+
+		 script = document.createElement('script');
+		 script.classList.add('t-zero-forms-s');
+		 //@formatter:off
+		 scriptText = '';
+		 scriptText += "if (document.readyState != 'loading'){";
+		 scriptText += 't_inputDatePicker__init();';
+		 scriptText += '} else {';
+		 scriptText += "document.addEventListener('DOMContentLoaded', function() {";
+		 scriptText += 't_inputDatePicker__init();';
+		 scriptText += '});';
+		 scriptText += '}';
+		 scriptText += 'function t_inputDatePicker__init() {';
+		 scriptText += 'var script = document.createElement("script");';
+		 scriptText += 'script.src = "https://static.tildacdn.com/js/tilda-date-picker-1.0.min.js";';
+		 scriptText += 'script.async = true;';
+		 scriptText +=
+			 'if (!document.querySelector(\'script[src^="https://static.tildacdn.com/js/tilda-date-picker-"]\')) {';
+		 scriptText += 'document.body.insertAdjacentElement("beforeend", script);';
+		 scriptText += 'script.onload = function() {';
+		 scriptText += 'setTimeout(function() {';
+		 scriptText +=
+			 'try {t_datepicker_init(' + recid + ',' + item.lid + ',' + elemid + ')} catch(err) {console.log(err)};';
+		 scriptText += '}, 500);';
+		 scriptText += '}';
+		 scriptText += '} else {';
+		 scriptText += 'setTimeout(function() {';
+		 scriptText +=
+			 'try {t_datepicker_init(' + recid + ',' + item.lid + ',' + elemid + ')} catch(err) {console.log(err)};';
+		 scriptText += '}, 500);';
+		 scriptText += '}';
+		 scriptText += '}';
+		 //@formatter:on
+		 script.textContent = scriptText;
+		 scripts.push(script);
+	 } else if (item.li_type === 'uc') {
+		 var tildamode = t_zeroForms__getTildaMode();
+		 if (tildamode === 'published') {
+			 str += '<div class="t-uploadcare" style="margin-bottom:10px;">';
+			 str +=
+				 '<input type="text" type="hidden" role="uploadcare-uploader" class="js-tilda-rule" ' +
+				 inputName +
+				 ' data-public-key="' +
+				 (item.li_uckey ? item.li_uckey : 'demopublickey') +
+				 '" ' +
+				 input_req +
+				 ' style="display:none;">';
+
+			 if (!document.getElementById('uploadCareLib')) {
+				 script = document.createElement('script');
+				 script.classList.add('t-zero-forms-s');
+				 script.src = 'https://static.tildacdn.com/js/uploadcare-3.x.min.js';
+				 script.async = true;
+				 script.charset = 'utf-8';
+				 script.id = 'uploadCareLib';
+				 document.body.insertAdjacentElement('beforeend', script);
+				 script = null;
+			 }
+
+			 script = document.createElement('script');
+			 script.classList.add('t-zero-forms-s');
+			 var elemID = el.getAttribute('data-elem-id');
+			 script.id = 'uploadCareScript-' + elemID;
+			 scriptText = 'UPLOADCARE_LOCALE = "' + item.li_inp + '";';
+			 scriptText += 'UPLOADCARE_TABS = "all";';
+			 script.textContent = scriptText;
+			 document.body.insertAdjacentElement('beforeend', script);
+			 script = null;
+
+			 str += '</div>';
+		 } else {
+			 str +=
+				 '<div style="color:#fff;background-color:#000; padding:10px 20px; display:inline-block; margin-bottom:10px;">Upload button will be here</div>';
+		 }
+	 } else if (item.li_type === 'uw') {
+		 var tildamode = t_zeroForms__getTildaMode();
+		 if (tildamode === 'published') {
+			 str += '<div class="t-upwidget" style="margin-bottom:5px;min-height:38px;">';
+			 str +=
+				 '<input type="text" type="hidden" role="upwidget-uploader" class="js-tilda-rule" ' +
+				 inputName +
+				 ' data-tilda-upwidget-key="' +
+				 (item.li_uwkey ? item.li_uwkey : '') +
+				 '" ' +
+				 input_req +
+				 ' ' +
+				 (item.li_multiupl === 'y' ? 'data-tilda-upwidget-multiple="1"' : '') +
+				 ' style="display:none;">';
+			 str += '</div>';
+
+			 script = document.createElement('script');
+			 script.classList.add('t-zero-forms-s');
+			 //@formatter:off
+			 scriptText = '';
+			 scriptText += "if (document.readyState != 'loading'){";
+			 scriptText += 't_inputUpWidget__init();';
+			 scriptText += '} else {';
+			 scriptText += "document.addEventListener('DOMContentLoaded', function() {";
+			 scriptText += 't_inputUpWidget__init();';
+			 scriptText += '});';
+			 scriptText += '}';
+			 scriptText += 'function t_inputUpWidget__init() {';
+			 scriptText += 'var script = document.createElement("script");';
+			 scriptText += 'script.src = "https://static.tildacdn.com/js/tilda-upwidget-1.1.min.js";';
+			 scriptText += 'script.id = "tUpWidget";';
+			 scriptText += 'script.async = true;';
+			 scriptText += 'if (!document.getElementById("tUpWidget")) {';
+			 scriptText += 'document.body.insertAdjacentElement("beforeend", script);';
+			 scriptText += 'script.onload = function() {';
+			 scriptText += 'setTimeout(function() {';
+			 scriptText += 'try {t_upwidget__init()} catch(err) {console.log(err)};';
+			 scriptText += '}, 500);';
+			 scriptText += '}';
+			 scriptText += '} else {';
+			 scriptText += 'setTimeout(function() {';
+			 scriptText += 'try {t_upwidget__init()} catch(err) {console.log(err)};';
+			 scriptText += '}, 500);';
+			 scriptText += '}';
+			 scriptText += '}';
+			 //@formatter:on
+			 script.textContent = scriptText;
+			 scripts.push(script);
+		 } else {
+			 str +=
+				 '<div style="color:#fff;background-color:#000; padding:10px 20px; display:inline-block; margin-bottom:5px;">' +
+				 (item.li_uwkey === '' ? 'Please set the key' : 'Upload button will be here') +
+				 '</div>';
+		 }
+	 } else if (item.li_type === 'tm') {
+		 str +=
+			 '<input type="text" ' +
+			 inputName +
+			 ' class="t-input t-inputtime js-tilda-rule js-tilda-mask ' +
+			 input_bbonly +
+			 '" value="" ' +
+			 input_ph +
+			 ' ' +
+			 input_req +
+			 ' data-tilda-rule="time" data-tilda-mask="99:99" style="' +
+			 input_style +
+			 '">';
+	 } else if (item.li_type === 'hd') {
+		 str += '<input type="hidden" ' + inputName + ' tabindex="-1" value="' + item.li_value + '">';
+	 } else if (item.li_type === 'ur') {
+		 str +=
+			 '<input type="text" ' +
+			 inputName +
+			 ' class="t-input js-tilda-rule ' +
+			 input_bbonly +
+			 '" value="" ' +
+			 input_ph +
+			 ' ' +
+			 input_req +
+			 ' data-tilda-rule="url" style="' +
+			 input_style +
+			 '">';
+	 } else if (item.li_type === 'qn') {
+		 str += '<div class="t-inputquantity__wrapper">';
+		 str +=
+			 '  <span class="t-inputquantity__btn t-inputquantity__btn-minus" ' +
+			 (a.inputelscolor ? 'style="color:' + a.inputelscolor + '"' : '') +
+			 '>&ndash;</span>';
+		 str +=
+			 '  <input type="text" ' +
+			 inputName +
+			 ' class="t-input t-inputquantity js-tilda-rule ' +
+			 input_bbonly +
+			 '" value="' +
+			 item.li_value +
+			 '" ' +
+			 input_ph +
+			 ' ' +
+			 input_req +
+			 ' data-tilda-rule="number" style="' +
+			 input_style +
+			 '">';
+		 str +=
+			 '  <span class="t-inputquantity__btn t-inputquantity__btn-plus" ' +
+			 (a.inputelscolor ? 'style="color:' + a.inputelscolor + '"' : '') +
+			 '>+</span>';
+		 str += '</div>';
+
+		 recid = el.closest('.r') ? el.closest('.r').id : '';
+		 recid = recid ? recid.replace('rec', '') : '';
+
+		 script = document.createElement('script');
+		 script.classList.add('t-zero-forms-s');
+		 //@formatter:off
+		 scriptText = '';
+		 scriptText += "if (document.readyState != 'loading'){";
+		 scriptText += 't_input__quanityCounterInit()';
+		 scriptText += '} else {';
+		 scriptText += "document.addEventListener('DOMContentLoaded', function() {";
+		 scriptText += 't_input__quanityCounterInit()';
+		 scriptText += '});';
+		 scriptText += '}';
+		 scriptText += '';
+		 scriptText += 'function t_input__quanityCounterInit() {';
+		 scriptText += 'function t_input_quantity_init(recid, lid) {';
+		 scriptText +=
+			 "var plusBtn = document.querySelector('#rec' + recid + ' [data-input-lid=\"' + lid + '\"] .t-inputquantity__btn-plus');";
+		 scriptText +=
+			 "var minusBtn = document.querySelector('#rec' + recid + ' [data-input-lid=\"' + lid + '\"] .t-inputquantity__btn-minus');";
+		 scriptText += 'if (plusBtn) {';
+		 scriptText += "plusBtn.addEventListener('click', function() {";
+		 scriptText += "var parent = plusBtn.closest('[data-input-lid=\"'+lid+'\"]');";
+		 scriptText += "var quantity = parent ? parent.querySelector('.t-inputquantity') : null;";
+		 scriptText += 'var val = quantity ? +quantity.value : 0;';
+		 scriptText += 'if (val >= 0) {';
+		 scriptText += 'val++;';
+		 scriptText += '} else {';
+		 scriptText += 'val = 1;';
+		 scriptText += '}';
+		 scriptText += 'if (quantity) quantity.value = val;';
+		 scriptText += '});';
+		 scriptText += '}';
+		 scriptText += 'if (minusBtn) {';
+		 scriptText += "minusBtn.addEventListener('click', function() {";
+		 scriptText += "var parent = plusBtn.closest('[data-input-lid=\"'+lid+'\"]');";
+		 scriptText += "var quantity = parent ? parent.querySelector('.t-inputquantity') : null;";
+		 scriptText += 'var val = quantity ? +quantity.value : 0;';
+		 scriptText += 'if (val > 0) {';
+		 scriptText += 'val--;';
+		 scriptText += '} else {';
+		 scriptText += 'val = 0;';
+		 scriptText += '}';
+		 scriptText += 'if (quantity) quantity.value = val;';
+		 scriptText += '});';
+		 scriptText += '}';
+		 scriptText += '}';
+		 scriptText += "t_input_quantity_init('" + recid + "','" + item.lid + "');";
+		 scriptText += '}';
+		 //@formatter:on
+		 script.textContent = scriptText;
+		 scripts.push(script);
+	 } else if (item.li_type === 'pc') {
+		 /* */
+	 } else if (item.li_type === 'tx') {
+		 str +=
+			 '<div class="t-text" field="li_text__' +
+			 item.lid +
+			 '" style="' +
+			 input_txtlbl_style +
+			 '">' +
+			 item.li_text +
+			 '</div>';
+	 } else if (item.li_type === 'ws') {
+		 str +=
+			 '<div class="" style="' +
+			 (item.li_rows > 0 ? 'height:' + item.li_rows * 34 + 'px' : '') +
+			 '">&nbsp;</div>';
+	 } else if (item.li_type === 'st') {
+		 /* */
+	 } else if (item.li_type === 'fr') {
+		 str +=
+			 '<input type="hidden" class="t-calc__hiddeninput js-tilda-rule" ' +
+			 inputName +
+			 ' tabindex="-1" value="0">';
+		 str += '<div class="t-calc__wrapper t-name t-name_md" style="' + inputTextStyles + '">';
+		 str +=
+			 '    ' +
+			 (item.li_prefix ? '<span class="t-calc__prefix-text">' + item.li_prefix + '</span>' : '') +
+			 '<span class="t-calc" data-calc-expr="' +
+			 t_zeroForms__escape(item.li_expr) +
+			 '">0</span>' +
+			 (item.li_postfix ? '<span class="t-calc__postfix-text">' + item.li_postfix + '</span>' : '') +
+			 '';
+		 str += '</div>';
+
+		 recid = el.closest('.r') ? el.closest('.r').id : '';
+		 recid = recid ? recid.replace('rec', '') : '';
+
+		 script = document.createElement('script');
+		 script.classList.add('t-zero-forms-s');
+
+		 // script.textContent = `t_zero__onReady(function() {
+		 // 		var script = document.createElement('script');
+		 // 		script.src = 'https://static.tildacdn.com/js/tilda-calc-1.0.min.js';
+		 // 		script.id = 'tCalcScript';
+		 // 		script.async = true;
+		 // 		if (!document.getElementById('tCalcScript')) {
+		 // 			var currentScript = document.getElementById('${item.lid}-calc');
+		 // 			if (currentScript) currentScript.insertAdjacentElement('beforebegin', script);
+		 // 		} else {
+		 // 			script = document.getElementById('tCalcScript');
+		 // 		}
+		 // 		if (script.readyState === 'loaded' || script.readyState === 'complete') {
+		 // 			tcalc__init('${recid}', '${item.lid}');
+		 // 		} else {
+		 // 			script.addEventListener('load', function() {
+		 // 				tcalc__init('${recid}', '${item.lid}');
+		 // 			});
+		 // 		}
+		 // 	});`;
+
+		 // transform via Babel
+		 script.textContent =
+			 "t_zero__onReady(function() {\n\t\t\t\t\tvar script = document.createElement('script');\n\t\t\t\t\tscript.src = 'https://static.tildacdn.com/js/tilda-calc-1.0.min.js';\n\t\t\t\t\tscript.id = 'tCalcScript';\n\t\t\t\t\tscript.async = true;\n\t\t\t\t\tif (!document.getElementById('tCalcScript')) {\n\t\t\t\t\t\tvar currentScript = document.getElementById('"
+				 .concat(
+					 item.lid,
+					 "-calc');\n\t\t\t\t\t\tif (currentScript) currentScript.insertAdjacentElement('beforebegin', script);\n\t\t\t\t\t} else {\n\t\t\t\t\t\tscript = document.getElementById('tCalcScript');\n\t\t\t\t\t}\n\t\t\t\t\tif (script.readyState === 'loaded' || script.readyState === 'complete') {\n\t\t\t\t\t\ttcalc__init('"
+				 )
+				 .concat(recid, "', '")
+				 .concat(
+					 item.lid,
+					 "');\n\t\t\t\t\t} else {\n\t\t\t\t\t\tscript.addEventListener('load', function() {\n\t\t\t\t\t\t\ttcalc__init('"
+				 )
+				 .concat(recid, "', '")
+				 .concat(item.lid, "');\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t});");
+		 script.id = item.lid + '-calc';
+		 scripts.push(script);
+
+		 if (typeof a.inputfrbgcolor != 'undefined' && a.inputfrbgcolor) {
+			 str += '<style>';
+			 str +=
+				 '.tn-elem[data-elem-id="' +
+				 (el.getAttribute('data-elem-id') ? el.getAttribute('data-elem-id') : '') +
+				 '"] .t-input-group_fr {';
+			 str += '    background-color: ' + a.inputfrbgcolor + ';';
+			 str += '    padding: 20px 30px 25px;';
+			 str += '}';
+			 str += '</style>';
+		 }
+		 if (item.li_addtocart === 'y') {
+			 if (item.li_prod_title) {
+				 str +=
+					 '<input type="hidden" class="t-calc__hidden__prod_title" name="prod_title" value="' +
+					 item.li_prod_title +
+					 '" tabindex="-1">';
+			 }
+			 if (item.li_prod_img) {
+				 str +=
+					 '<input type="hidden" class="t-calc__hidden__prod_img" name="prod_img" value="' +
+					 item.li_prod_img +
+					 '" tabindex="-1">';
+			 }
+		 }
+	 } else if (item.li_type === 'rg') {
+		 str += '<div class="t-range__wrapper">';
+		 str +=
+			 '    <input ' +
+			 inputName +
+			 ' class="t-range js-tilda-rule" type="range" min="' +
+			 (item.li_vmin ? item.li_vmin : '0') +
+			 '" max="' +
+			 (item.li_vmax ? item.li_vmax : '10') +
+			 '" step="' +
+			 (item.li_step ? item.li_step : '1') +
+			 '" ' +
+			 (item.li_value ? 'value="' + item.li_value + '"' : '') +
+			 ' ' +
+			 (a.inputelscolor ? 'data-range-color="' + a.inputelscolor + '"' : '') +
+			 '>';
+		 str += '    <div class="t-range__value-txt t-descr t-descr_xxs" style="display: none;"></div>';
+		 str += '    <div class="t-range__interval-txt-wrapper">';
+		 str +=
+			 '        <div class="t-range__interval-txt t-range__interval-txt_min t-descr t-descr_xxs" ' +
+			 (a.inputtitlecolor ? 'style="color: ' + a.inputtitlecolor + '"' : '') +
+			 '>' +
+			 (item.li_vmin ? item.li_vmin : '0') +
+			 '</div>';
+		 str +=
+			 '        <div class="t-range__interval-txt t-range__interval-txt_max t-descr t-descr_xxs" ' +
+			 (a.inputtitlecolor ? 'style="color: ' + a.inputtitlecolor + '"' : '') +
+			 '>' +
+			 (item.li_vmax ? item.li_vmax : '10') +
+			 '</div>';
+		 str += '    </div>';
+		 str += '</div>';
+		 str += '<link rel="stylesheet" href="https://static.tildacdn.com/css/tilda-range-1.0.min.css">';
+
+		 recid = el.closest('.r') ? el.closest('.r').id : '';
+		 if (!recid) {
+			 recid = el.closest('.tn-artboard') ? el.closest('.tn-artboard').getAttribute('data-record-id') : '';
+		 }
+		 recid = recid ? recid.replace('rec', '') : '';
+
+		 script = document.createElement('script');
+		 script.classList.add('t-zero-forms-s');
+
+		 // script.textContent = `t_zero__onReady(function() {
+		 // 		var script = document.createElement('script');
+		 // 		script.src = 'https://static.tildacdn.com/js/tilda-range-1.0.min.js';
+		 // 		script.id = 'tRangeSlider';
+		 // 		script.async = true;
+		 // 		if (!document.getElementById('tRangeSlider')) {
+		 // 			document.body.insertAdjacentElement('beforeend', script);
+		 // 		} else {
+		 // 			script = document.getElementById('tRangeSlider');
+		 // 		}
+		 // 		if (script.readyState === 'loaded' || script.readyState === 'complete') {
+		 // 			t_input_range_init('${recid}', '${item.lid}');
+		 // 		} else {
+		 // 			script.addEventListener('load', function() {
+		 // 				t_input_range_init('${recid}', '${item.lid}');
+		 // 			});
+		 // 		}
+		 // 	});`;
+
+		 // transform via Babel
+		 script.textContent =
+			 "t_zero__onReady(function() {\n\t\t\t\t\tvar script = document.createElement('script');\n\t\t\t\t\tscript.src = 'https://static.tildacdn.com/js/tilda-range-1.0.min.js';\n\t\t\t\t\tscript.id = 'tRangeSlider';\n\t\t\t\t\tscript.async = true;\n\t\t\t\t\tif (!document.getElementById('tRangeSlider')) {\n\t\t\t\t\t\tdocument.body.insertAdjacentElement('beforeend', script);\n\t\t\t\t\t} else {\n\t\t\t\t\t\tscript = document.getElementById('tRangeSlider');\n\t\t\t\t\t}\n\t\t\t\t\tif (script.readyState === 'loaded' || script.readyState === 'complete') {\n\t\t\t\t\t\tt_input_range_init('"
+				 .concat(recid, "', '")
+				 .concat(
+					 item.lid,
+					 "');\n\t\t\t\t\t} else {\n\t\t\t\t\t\tscript.addEventListener('load', function() {\n\t\t\t\t\t\t\tt_input_range_init('"
+				 )
+				 .concat(recid, "', '")
+				 .concat(item.lid, "');\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t});");
+		 scripts.push(script);
+
+		 if (a.inputelscolor) {
+			 str += '<style>';
+			 str +=
+				 (recid ? '#rec' + recid + ' ' : '') +
+				 '.tn-elem[data-elem-id="' +
+				 (el.getAttribute('data-elem-id') ? el.getAttribute('data-elem-id') : '') +
+				 '"]  .t-range::-webkit-slider-thumb {';
+			 str += '    background: ' + a.inputelscolor + ';';
+			 str += '}';
+			 str +=
+				 (recid ? '#rec' + recid + ' ' : '') +
+				 '.tn-elem[data-elem-id="' +
+				 (el.getAttribute('data-elem-id') ? el.getAttribute('data-elem-id') : '') +
+				 '"]  .t-range::-moz-range-thumb {';
+			 str += '    background: ' + a.inputelscolor + ';';
+			 str += '}';
+			 str +=
+				 (recid ? '#rec' + recid + ' ' : '') +
+				 '.tn-elem[data-elem-id="' +
+				 (el.getAttribute('data-elem-id') ? el.getAttribute('data-elem-id') : '') +
+				 '"]  .t-range::-ms-thumb {';
+			 str += '    background: ' + a.inputelscolor + ';';
+			 str += '}';
+			 str += '</style>';
+		 }
+	 } else if (item.li_type === 'ri') {
+		 // var formhaschrdbox = 'yes';
+		 if (item.li_radcb === 'cb') {
+			 str +=
+				 '<input type="hidden" class="t-img-select__hiddeninput js-tilda-rule" ' +
+				 inputName +
+				 ' tabindex="-1" value="" ' +
+				 input_req +
+				 '>';
+		 }
+
+		 var galobj = '';
+		 if (typeof item.li_gallery !== 'undefined' && item.li_gallery) {
+			 galobj = JSON.parse(item.li_gallery);
+		 }
+		 if (typeof galobj === 'object') {
+			 str +=
+				 '<div class="t-img-select__container" data-check-bgcolor="' +
+				 (a.inputelscolor ? a.inputelscolor : '#000') +
+				 '">';
+			 for (i = 0; i < galobj.length; i++) {
+				 if (typeof galobj[i] != 'undefined') {
+					 str += '<label class="t-img-select__control">';
+					 str +=
+						 '    <input ' +
+						 (item.li_radcb === 'cb' ? 'type="checkbox"' : 'type="radio" ' + inputName) +
+						 ' value="' +
+						 (typeof galobj[i].alt != 'undefined' && galobj[i].alt ? galobj[i].alt : galobj[i].img) +
+						 '" class="t-img-select ' +
+						 (item.li_radcb === 'rb' ? 'js-tilda-rule' : '') +
+						 '" ' +
+						 (+item.li_defselitem > 0
+							 ? +item.li_defselitem === i + 1
+								 ? 'checked="checked"'
+								 : ''
+							 : '') +
+						 ' ' +
+						 input_req +
+						 '>';
+					 if (galobj[i].img) {
+						 var selectimgratio = 't-img-select__indicator_1-1';
+						 switch (item.li_imgratio) {
+							 case '3_2':
+								 selectimgratio = 't-img-select__indicator_3-2';
+								 break;
+							 case '4_3':
+								 selectimgratio = 't-img-select__indicator_4-3';
+								 break;
+							 case '2_3':
+								 selectimgratio = 't-img-select__indicator_2-3';
+								 break;
+							 case '3_4':
+								 selectimgratio = 't-img-select__indicator_3-4';
+								 break;
+						 }
+						 str +=
+							 '<div class="t-bgimg t-img-select__indicator ' +
+							 selectimgratio +
+							 '" data-original="' +
+							 galobj[i].img +
+							 '" style="background-image:url(\'' +
+							 galobj[i].img +
+							 '\');"></div>';
+					 }
+					 if (typeof galobj[i].alt != 'undefined' && galobj[i].alt) {
+						 str +=
+							 '    <div class="t-img-select__text t-text t-text_xs"' +
+							 (a.inputtitlecolor ? ' style="color: ' + a.inputtitlecolor + '"' : '') +
+							 '>';
+						 str += '      ' + galobj[i].alt + '';
+						 str += '    </div>';
+					 }
+					 str += '</label>';
+				 }
+			 }
+			 str += '</div>';
+		 }
+
+		 str += '<link rel="stylesheet" href="https://static.tildacdn.com/css/tilda-img-select-1.0.css">';
+
+		 recid = el.closest('.r') ? el.closest('.r').id : '';
+		 recid = recid ? recid.replace('rec', '') : '';
+
+		 script = document.createElement('script');
+		 script.classList.add('t-zero-forms-s');
+
+		 // script.textContent = `t_zero__onReady(function() {
+		 // 		var script = document.createElement('script');
+		 // 		script.src = 'https://static.tildacdn.com/js/tilda-img-select-1.0.min.js';
+		 // 		script.id = 'tImgSelect';
+		 // 		script.async = true;
+		 // 		if (!document.getElementById('tImgSelect')) {
+		 // 			document.body.insertAdjacentElement('beforeend', script);
+		 // 		} else {
+		 // 			script = document.getElementById('tImgSelect');
+		 // 		}
+		 // 		if (script.readyState === 'loaded' || script.readyState === 'complete') {
+		 // 			t_input_imgselect_init('${recid}', '${item.lid}');
+		 // 			t_input_imgselect_invertColor('${recid}');
+		 // 		} else {
+		 // 			script.addEventListener('load', function() {
+		 // 				t_input_imgselect_init('${recid}', '${item.lid}');
+		 // 				t_input_imgselect_invertColor('${recid}');
+		 // 			});
+		 // 		}
+		 // 	});`;
+
+		 // transform via Babel
+		 script.textContent =
+			 "t_zero__onReady(function() {\n\t\t\t\t\tvar script = document.createElement('script');\n\t\t\t\t\tscript.src = 'https://static.tildacdn.com/js/tilda-img-select-1.0.min.js';\n\t\t\t\t\tscript.id = 'tImgSelect';\n\t\t\t\t\tscript.async = true;\n\t\t\t\t\tif (!document.getElementById('tImgSelect')) {\n\t\t\t\t\t\tdocument.body.insertAdjacentElement('beforeend', script);\n\t\t\t\t\t} else {\n\t\t\t\t\t\tscript = document.getElementById('tImgSelect');\n\t\t\t\t\t}\n\t\t\t\t\tif (script.readyState === 'loaded' || script.readyState === 'complete') {\n\t\t\t\t\t\tt_input_imgselect_init('"
+				 .concat(recid, "', '")
+				 .concat(item.lid, "');\n\t\t\t\t\t\tt_input_imgselect_invertColor('")
+				 .concat(
+					 recid,
+					 "');\n\t\t\t\t\t} else {\n\t\t\t\t\t\tscript.addEventListener('load', function() {\n\t\t\t\t\t\t\tt_input_imgselect_init('"
+				 )
+				 .concat(recid, "', '")
+				 .concat(item.lid, "');\n\t\t\t\t\t\t\tt_input_imgselect_invertColor('")
+				 .concat(recid, "');\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t});");
+		 scripts.push(script);
+
+		 if (a.inputelscolor) {
+			 str += '<style>';
+			 str +=
+				 '.tn-elem[data-elem-id="' +
+				 (el.getAttribute('data-elem-id') ? el.getAttribute('data-elem-id') : '') +
+				 '"] .t-img-select__indicator:after {';
+			 str += '   background-color:' + a.inputelscolor + ';';
+			 str += '  }';
+			 str += '</style>';
+		 }
+	 }
+	 str += '<div class="t-input-error"></div>';
+	 str += '</div>';
+	 str += '</div>';
+ } else if (item.li_type === 'hd') {
+	 str += '<input type="hidden" name="' + item.li_nm + '" tabindex="-1" value="' + item.li_value + '">';
+ }
+ return {
+	 string: str,
+	 script: scripts,
+ };
 }
 
 /**
- * create styles in string for submit and upload buttons
- * in t_zeroForms__createFormButton()
- *
- * @param {formObj} formObj
- * @param {string} btnFontFamily
- * @returns {string}
- */
-function t_zeroForms__generateButtonStyles(formObj, btnFontFamily) {
-	var buttonStyles = {
-		color: formObj.buttoncolor || '',
-		// prettier-ignore
-		'border': formObj.buttonbordersize ? formObj.inputbordersize + 'px solid ' + formObj.buttonbordercolor || 'transparent' : '',
-		'background-color': formObj.buttonbgcolor || 'transparent',
-		'border-radius': formObj.buttonradius || '0',
-		'font-size': formObj.buttonfontsize || '',
-		'font-family': formObj.buttonfontfamily || btnFontFamily,
-		cursor: 'pointer',
-	};
-	var stylesString = '';
-	var pxValues = ['font-size', 'height', 'border-radius'];
-	for (var k in buttonStyles) {
-		if (buttonStyles[k]) {
-			var isPxContains = pxValues.some(function (key) {
-				return key === k.toString();
-			});
-			if (isPxContains) buttonStyles[k] += 'px';
-			stylesString += k + ':' + buttonStyles[k] + ';';
-		}
-	}
-	return stylesString;
+* create button for current form
+*
+* @param {HTMLElement} el - current form
+* @param {Object} a - obj with params
+* @returns {string} - string, which will parse into HTML
+*/
+function t_zeroForms__getFormButtonHtml(el, a) {
+ if (window.jQuery && el instanceof jQuery) {
+	 el = el.length ? el.get(0) : null;
+ }
+ var currentFormID = el ? el.getAttribute('data-elem-id') : '';
+ var rec = el ? el.closest('.r') : null;
+ var recid = rec ? rec.id : '';
+ var hasUploadCare = document.getElementById('uploadCareScript-' + currentFormID);
+ var str = '';
+ var buttonfontweight = a.buttonfontweight === 'variation' ? a.buttonvariationweight : a.buttonfontweight;
+ str +=
+	 '<div class="tn-form__submit" style="' +
+	 (a.buttonalign === 'center' ? 'text-align:center;' : '') +
+	 (a.buttonmargtop ? 'margin-top:' + a.buttonmargtop + 'px' : '') +
+	 '">';
+ str += '<button type="submit" class="t-submit" style="';
+ if (a.buttoncolor) str += 'color:' + a.buttoncolor + ';';
+ if (a.buttonbordersize || a.buttonbordercolor) {
+	 str +=
+		 'border:' +
+		 (a.buttonbordersize ? a.buttonbordersize : '0') +
+		 'px solid ' +
+		 (a.buttonbordercolor ? a.buttonbordercolor : 'transparent') +
+		 ';';
+ }
+ str += a.buttonbgcolor ? 'background-color:' + a.buttonbgcolor + ';' : 'background-color: transparent;';
+ if (a.buttonradius) str += 'border-radius:' + a.buttonradius + 'px;';
+ if (a.buttonfontfamily) str += 'font-family:' + a.buttonfontfamily + ';';
+ if (buttonfontweight) str += 'font-weight:' + buttonfontweight + ';';
+ if (a.buttonfontsize) str += 'font-size:' + a.buttonfontsize + 'px;';
+ if (a.buttonshadowsize || a.buttonshadowopacity) {
+	 str +=
+		 'box-shadow: 0px 0px ' +
+		 (a.buttonshadowsize ? a.buttonshadowsize + 'px' : '10px') +
+		 ' 0px rgba(0, 0, 0, ' +
+		 (a.buttonshadowopacity ? a.buttonshadowopacity / 100 : '0.3') +
+		 ');';
+ }
+ if (a.buttonwidth) {
+	 str += 'width:' + a.buttonwidth + 'px;';
+ } else {
+	 str += 'width:100%;';
+ }
+ if (a.buttonheight) str += 'height:' + a.buttonheight + 'px;';
+ if (a.buttonalign === 'center') str += 'margin-left:auto;margin-right:auto;';
+ str += 'padding:0 15px;display:block;';
+ str += '">';
+ if (a.buttontitle) str += a.buttontitle;
+ str += '</button>';
+ str += '</div>';
+
+ if (hasUploadCare && currentFormID && recid) {
+	 str += '<style>';
+	 str +=
+		 '#' +
+		 recid +
+		 ' [data-elem-id="' +
+		 currentFormID +
+		 '"] .uploadcare--widget__button.uploadcare--widget__button_type_open {';
+	 str += 'cursor: pointer;';
+	 if (a.buttoncolor) str += 'color:' + a.buttoncolor + ';';
+	 if (a.buttonbordersize || a.buttonbordercolor) {
+		 str +=
+			 'border:' +
+			 (a.buttonbordersize ? a.buttonbordersize : '0') +
+			 'px solid ' +
+			 (a.buttonbordercolor ? a.buttonbordercolor : 'transparent') +
+			 ';';
+	 }
+	 if (a.buttonradius) str += 'border-radius:' + a.buttonradius + 'px;';
+	 if (a.buttonfontfamily) str += 'font-family:' + a.buttonfontfamily + ';';
+	 if (buttonfontweight) str += 'font-weight:' + buttonfontweight + ';';
+	 if (a.buttonfontsize) str += 'font-size:' + a.buttonfontsize + 'px;';
+	 str += a.buttonbgcolor ? 'background-color:' + a.buttonbgcolor + ';' : 'background-color: transparent;';
+	 str += '}';
+	 str += '</style>';
+ }
+
+ return str;
 }
 
 /**
- * create error box
- *
- * @param {formObj} formObj - obj
- * @param {'bottom' | 'middle'} direction
- * @returns {HTMLElement}
- */
-function t_zeroForms__createErrorBox(formObj, direction) {
-	var errorBox = document.createElement('div');
-	errorBox.classList.add('t-form__errorbox-' + direction);
+*
+* @param {HTMLElement} el - current form
+* @param {string} datastr - textarea value
+* @param {string} recid - record ID
+*/
 
-	var wrapper = document.createElement('div');
-	wrapper.classList.add('js-errorbox-all');
-	wrapper.classList.add('t-form__errorbox-wrapper');
-	wrapper.style.display = 'none';
-	errorBox.insertAdjacentElement('beforeend', wrapper);
+function t_zeroForms__resizeButton(el) {
+ if (window.jQuery && el instanceof jQuery) {
+	 el = el.length ? el.get(0) : null;
+ }
 
-	var textWrapper = document.createElement('div');
-	textWrapper.classList.add('t-form__errorbox-text');
-	textWrapper.classList.add('t-text_xs');
-	textWrapper.classList.add('t-text');
+ var a = {};
+ var field = 'buttonwidth';
+ var tildamode = t_zeroForms__getTildaMode();
+ var hasJquery = typeof jQuery === 'function';
 
-	var fields = ['all', 'req', 'email', 'name', 'phone', 'string'];
-	fields.forEach(function (field) {
-		var text = document.createElement('p');
-		text.classList.add('t-form__errorbox-item');
-		text.classList.add('js-rule-error');
-		text.classList.add('js-rule-error-' + field);
-		if (field !== 'all' && field !== 'string') text.textContent = formObj['formerr' + field];
-		textWrapper.insertAdjacentElement('beforeend', text);
-	});
+ if (tildamode === 'zero') {
+	 a[field] = elem__getFieldValue(hasJquery ? $(el) : el, field);
+ } else {
+	 t_onFuncLoad('t396_elem__getFieldValue', function () {
+		 a[field] = t396_elem__getFieldValue(hasJquery ? $(el) : el, field);
+		 if (typeof a[field] == 'undefined') a[field] = '';
+	 });
+ }
 
-	wrapper.insertAdjacentElement('beforeend', textWrapper);
-
-	var errorBoxCloseBtn = document.createElement('div');
-	errorBoxCloseBtn.classList.add('tn-form__errorbox-close');
-	errorBoxCloseBtn.classList.add('js-errorbox-close');
-	errorBoxCloseBtn.insertAdjacentElement('beforeend', t_zeroForms__createErrorBoxBtn('left'));
-	errorBoxCloseBtn.insertAdjacentElement('beforeend', t_zeroForms__createErrorBoxBtn('right'));
-	wrapper.insertAdjacentElement('beforeend', errorBoxCloseBtn);
-
-	document.removeEventListener('click', t_zeroForms__initErrorBoxClose);
-	document.addEventListener('click', t_zeroForms__initErrorBoxClose);
-	t_zeroForms__setScriptOrStyle('t-zero-form-errorbox-styles', 'tilda-zero-form-errorbox.min.css', '', 'link', false);
-
-	return errorBox;
+ var button = el.querySelector('.t-submit');
+ var cashedWidth = parseInt(button.style.width, 10);
+ var currentWidth = parseInt(a.buttonwidth, 10);
+ if (cashedWidth !== currentWidth) button.style.width = currentWidth + 'px';
 }
 
 /**
- * @param {'left' | 'right'} position
- * @returns {HTMLDivElement}
- */
-function t_zeroForms__createErrorBoxBtn(position) {
-	var errorBoxEl = document.createElement('div');
-	errorBoxEl.classList.add('tn-form__errorbox-close-line');
-	errorBoxEl.classList.add('tn-form__errorbox-close-line-' + position);
-	return errorBoxEl;
+* get input placeholder styles
+*
+* @param {HTMLElement} el - current element
+* @param {Object} a - obj
+* @param {string} recid - record ID
+* @returns {string}
+*/
+function t_zeroForms__getInputPlaceholderStyles(el, a, recid) {
+ if (window.jQuery && el instanceof jQuery) {
+	 el = el.length ? el.get(0) : null;
+ }
+ var selector = '';
+ if (recid > 0) selector += '#rec' + recid + ' ';
+ selector +=
+	 '.tn-elem[data-elem-id="' + (el.getAttribute('data-elem-id') ? el.getAttribute('data-elem-id') : '') + '"]';
+ var str = '';
+ str += '<style>';
+ str += selector + ' input::-webkit-input-placeholder {color:' + a.inputcolor + '; opacity: 0.5;} ';
+ str += selector + ' input::-moz-placeholder {color:' + a.inputcolor + '; opacity: 0.5;} ';
+ str += selector + ' input:-moz-placeholder {color:' + a.inputcolor + '; opacity: 0.5;} ';
+ str += selector + ' input:-ms-input-placeholder {color:' + a.inputcolor + '; opacity: 0.5;} ';
+ str += selector + ' textarea::-webkit-input-placeholder {color:' + a.inputcolor + '; opacity: 0.5;} ';
+ str += selector + ' textarea::-moz-placeholder {color:' + a.inputcolor + '; opacity: 0.5;} ';
+ str += selector + ' textarea:-moz-placeholder {color:' + a.inputcolor + '; opacity: 0.5;} ';
+ str += selector + ' textarea:-ms-input-placeholder {color:' + a.inputcolor + '; opacity: 0.5;} ';
+ str += '</style>';
+ return str;
 }
 
 /**
- *
- * @param {string} formID - current formID
- * @param {formObj} formObj - object with params
- * @param {string} recid - record ID
- * @param {HTMLElement} zeroForm
- * @returns {HTMLElement} - bottom text as HTMLElement
- */
-function t_zeroForms__getBottomText(formID, formObj, recid, zeroForm) {
-	var checkboxList = ['cb', 'cbx'];
-	var isCheckbox = checkboxList.some(function (cb) {
-		return formObj.formbottomcb === cb;
-	});
-	if (!isCheckbox) {
-		var span = document.createElement('span');
-		span.textContent = formObj.formbottomcb;
-		return span;
-	} else {
-		var label = t_zeroForms__createLabel('checkbox', '', false);
-		label.classList.add('t-text');
-		label.classList.add('t-text_xxs');
-		if (formObj.inputtitlecolor) label.style.color = formObj.inputtitlecolor;
+* get error box
+*
+* @param {HTMLElement} el - current element
+* @param {Object} a - obj
+* @returns {string}
+*/
+function t_zeroForms__getErrorBoxHtml(el, a) {
+ var str = '';
+ //@formatter:off
+ str += '<div class="js-errorbox-all t-form__errorbox-wrapper" style="display:none;">';
+ str += '    <div class="t-form__errorbox-text t-text t-text_xs">';
+ str += '        <p class="t-form__errorbox-item js-rule-error js-rule-error-all"></p>';
+ str += '        <p class="t-form__errorbox-item js-rule-error js-rule-error-req">' + a.formerrreq + '</p>';
+ str += '        <p class="t-form__errorbox-item js-rule-error js-rule-error-email">' + a.formerremail + '</p>';
+ str += '        <p class="t-form__errorbox-item js-rule-error js-rule-error-name">' + a.formerrname + '</p>';
+ str += '        <p class="t-form__errorbox-item js-rule-error js-rule-error-phone">' + a.formerrphone + '</p>';
+ str += '        <p class="t-form__errorbox-item js-rule-error js-rule-error-string"></p>';
+ str += '    </div>';
+ str +=
+	 '	<div class="tn-form__errorbox-close js-errorbox-close"><div class="tn-form__errorbox-close-line tn-form__errorbox-close-line-left"></div><div class="tn-form__errorbox-close-line tn-form__errorbox-close-line-right"></div></div>';
+ str += '</div>';
+ //@formatter:on
 
-		var input = document.createElement('input');
-		var inputPreferences = {name: 'form_bottom_checkbox'};
-		t_zeroForms__appendMainSettingToField(input, inputPreferences, 'checkbox', 't-checkbox');
-		input.setAttribute('data-tilda-req', '1');
-		if (formObj.formbottomcb === 'cbx') input.checked = true;
-		label.insertAdjacentElement('beforeend', input);
+ str += '<style>';
+ str +=
+	 '.tn-atom .t-input-error{position:absolute;color:red;background-color:#fff;padding:8px 10px;border-radius:2px;z-index:1;margin-top:5px;left:0px;box-shadow:0px 1px 20px 0px rgba(0, 0, 0, 0.2);}';
+ str +=
+	 ".tn-atom .t-input-error:after{content:'';position:absolute;width:0;height:0;border:solid transparent;border-width:6px;top:-12px;left:15%;border-bottom-color:#fff;}";
+ str += '.tn-form__errorbox-close{';
+ str += '	height:14px; position:absolute; right:8px; top:8px; width:14px; cursor:pointer;';
+ str += '}';
+ str += '.tn-form__errorbox-close-line{';
+ str +=
+	 '	background:#fff none repeat scroll 0 0;height:1px; left:0; margin-top:-1px; position:absolute; top:50%; width:100%;';
+ str += '}';
+ str += '.tn-form__errorbox-close-line-left{';
+ str += '	transform:rotate(45deg);';
+ str += '}';
+ str += '.tn-form__errorbox-close-line-right{';
+ str += '	transform:rotate(-45deg);';
+ str += '}';
+ str += '.tn-atom .t-form__errorbox-wrapper, .tn-form__errorbox-popup{';
+ str +=
+	 '	position:fixed; bottom:20px; right:20px; z-index:10000; max-width:400px; min-width:260px; width:auto; box-shadow:0 0 3px 1px rgba(0, 0, 0, 0.2); border-radius:3px;text-align:left;font-family:Arial,sans-serf;background:#F95D51;padding:10px;';
+ str += '}';
+ str +=
+	 '.tn-atom .js-error-control-box .t-radio__wrapper, .tn-atom .js-error-control-box .t-checkbox__control{padding:3px;margin-top:-3px;}';
 
-		var indicator = t_zeroForms__createIndicator('checkbox', formObj.inputelscolor, false);
-		indicator.style.width = '15px';
-		indicator.style.height = '15px';
-		indicator.style.marginRight = '5px';
-		label.insertAdjacentElement('beforeend', indicator);
+ str += '@media screen and (max-width: 480px){';
+ str += '.tn-atom .t-form__errorbox-wrapper, .tn-form__errorbox-popup {';
+ str += '	max-width:280px;';
+ str += '}';
+ str += '}';
+ str += '</style>';
+ //@formatter:on
 
-		var labelText = document.createElement('span');
-		labelText.classList.add('t-checkbox__labeltext');
-		labelText.textContent = formObj.formbottomtext;
-		label.insertAdjacentElement('beforeend', labelText);
-
-		var selector = t_zeroForms__createSelector(recid, formID, '.t-form__bottom-text .t-checkbox__indicator:after');
-		var styles = formObj.inputelscolor ? 'color: ' + formObj.inputelscolor + ';' : '';
-		styles += 'left:3px;top:0;height:6px;';
-		t_zeroForms__setScriptOrStyle(
-			't-zero-form-btn-styles-' + formID,
-			'',
-			selector + '{' + styles + '}',
-			'style',
-			zeroForm
-		);
-
-		return label;
-	}
+ var script = document.createElement('script');
+ script.classList.add('t-zero-forms-s');
+ //@formatter:off
+ script.id = 'errorBoxScriptInit';
+ script.textContent += "document.addEventListener('click', function(e) {";
+ script.textContent += "if (e.target.closest('.js-errorbox-close') && e.target.closest('.tn-atom')) {";
+ script.textContent += "e.target.parentNode.style.display = 'none';";
+ script.textContent += '}';
+ script.textContent += '});';
+ //@formatter:on
+ if (!document.getElementById('errorBoxScriptInit')) {
+	 document.body.insertAdjacentElement('beforeend', script);
+ }
+ return str;
 }
 
 /**
- * animate inputs
- *
- * @param {HTMLElement} zeroForm - current form element
- * @param {formObj} formObj - object with params
- * @param {string} recid - record ID
- * @param {string} formID - form ID
- */
-function t_zeroForms__animateInputs(zeroForm, formObj, recid, formID) {
-	var mainSelector = t_zeroForms__createSelector(recid, formID, '');
-	var styles =
-		mainSelector +
-		'.t-input-group:not(.t-input-group_da):not(.t-input-group_ph):not(.t-input-group_uw)' +
-		':not(.t-input-group_ri):not(.t-input-group_cb):not(.t-input-group_rg) .t-input-block, .t-datepicker__wrapper';
-	styles += '{position: relative; overflow: hidden;}';
-	if (formObj.inputcolor) {
-		styles += mainSelector + '.t-input__vis-ph';
-		styles += '{color:' + formObj.inputcolor + ';}';
-	}
-	t_zeroForms__setScriptOrStyle('t-zero-form-anim-styles-' + formID, '', styles, 'style', zeroForm);
-
-	var topOffset = (Number(formObj.inputheight) - Number(formObj.inputfontsize)) / 2;
-	var fontWeight = formObj.inputfontweight === 'variation' ? formObj.inputvariationweight : formObj.inputfontweight;
-
-	var selector =
-		mainSelector + '.t-input:not(.t-inputquantity):not(.t-input-phonemask__wrap):not(.t-input-phonemask)';
-	var inputList = Array.prototype.slice.call(document.querySelectorAll(selector));
-	inputList.forEach(function (input) {
-		input.classList.add('t-input_pvis');
-		input.addEventListener('blur', function (e) {
-			if (e.target.getAttribute('data-tilda-mask-init') === '1') {
-				// setTimeout is need for correctly clear input value, after end of focus
-				setTimeout(function () {
-					e.target.value
-						? e.target.classList.add('t-input_has-content')
-						: e.target.classList.remove('t-input_has-content');
-				});
-			} else {
-				e.target.value
-					? e.target.classList.add('t-input_has-content')
-					: e.target.classList.remove('t-input_has-content');
-			}
-		});
-
-		var placeholder = input.getAttribute('placeholder');
-		if (!placeholder) return;
-
-		var animField = document.createElement('div');
-		animField.classList.add('t-input__vis-ph');
-		if (topOffset) animField.style.top = topOffset + 'px';
-		if (fontWeight) animField.style.fontWeight = fontWeight;
-		if (formObj.inputfontsize) {
-			animField.style.fontSize = formObj.inputfontsize + 'px';
-			// increase height for 1 px, to prevent cutting
-			animField.style.height = parseInt(formObj.inputfontsize, 10) + 1 + 'px';
-		}
-		animField.textContent = placeholder;
-		input.insertAdjacentElement('afterend', animField);
-		input.removeAttribute('placeholder');
-	});
-
-	if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-		//BBOnly - border-bottom only (input style: only border-bottom)
-		var textareaNotBBOnly = zeroForm.querySelectorAll('textarea:not(.t-input_bbonly)');
-		var textareaBBOnly = zeroForm.querySelectorAll('textarea.t-input_bbonly');
-		Array.prototype.forEach.call(textareaNotBBOnly, function (textarea) {
-			textarea.style.paddingLeft = '17px';
-		});
-		Array.prototype.forEach.call(textareaBBOnly, function (textarea) {
-			textarea.style.textIndent = '-3px';
-		});
-	}
-}
-
-/* ============= support functions for help create elements ============= */
-
-function t_zeroForms__appendAttributes(input, inputPreferences) {
-	if (inputPreferences.secondaryClassName) input.classList.add(inputPreferences.secondaryClassName);
-	if (inputPreferences.placeholder) input.placeholder = inputPreferences.placeholder;
-	if (inputPreferences.require) input.setAttribute('data-tilda-req', '1');
-}
-
-/**
- * set inputStyles params to input styles
- *
- * @param {HTMLInputElement | HTMLSelectElement} input
- * @param {Object} inputStyles
- */
-function t_zeroForms__appendStylesToField(input, inputStyles) {
-	for (var k in inputStyles) {
-		input.style[k] = inputStyles[k];
-	}
-}
-
-/**
- * set styles for indicator inside checkbox, radio or img-select
- *
- * @param {string} recid - record ID
- * @param {string} formID - current form ID
- * @param {string} color - color for current style
- * @param {'checkbox' | 'radio' | 'img-select'} type
- * @param field
- */
-function t_zeroForms__setIndicatorStyles(recid, formID, color, type, field) {
-	if (!color) return;
-	var selector = '.t-' + type + '__indicator:after';
-	var currentStyle = type === 'checkbox' ? 'border-color' : 'background-color';
-	var styles = document.createElement('style');
-	var mainSelector = t_zeroForms__createSelector(recid, formID, selector);
-	styles.textContent = mainSelector + '{' + currentStyle + ':' + color + ';}';
-	field.appendChild(styles);
-}
-
-/**
- * get input placeholder styles
- *
- * @param {string} formID - current form
- * @param {formObj} formObj
- * @param {string} recid - record ID
- * @param {HTMLElement} zeroForm
- * @returns {string}
- */
-function t_zeroForms__createInputPlaceholderStyles(formID, formObj, recid, zeroForm) {
-	var postfixList = [
-		'::-webkit-input-placeholder',
-		'::-moz-placeholder',
-		':-moz-placeholder',
-		':-ms-input-placeholder',
-	];
-	var elements = ['input', 'textarea'];
-	var selector = t_zeroForms__createSelector(recid, formID, '');
-
-	var styles = '';
-	elements.forEach(function (element) {
-		postfixList.forEach(function (postfix) {
-			styles += selector + element + postfix + '{color:' + formObj.inputcolor + ';opacity:0.5;}';
-		});
-	});
-	t_zeroForms__setScriptOrStyle('t-zero-placeholder-' + formID, '', styles, 'style', zeroForm);
-}
-
-/**
- * append style or script to body
- *
- * @param {string} id
- * @param {string} path
- * @param {string} content
- * @param {'script' | 'style' | 'link'} type
- * @param {HTMLElement | false} zeroForm
- */
-function t_zeroForms__setScriptOrStyle(id, path, content, type, zeroForm) {
-	if (document.getElementById(id)) return;
-	var location = 'https://static.tildacdn.com';
-	var element = document.createElement(type);
-	if (content) {
-		element.textContent = content;
-	} else {
-		if (type === 'script') {
-			element.src = location + '/js/' + path;
-			element.async = true;
-			element.charset = 'utf-8';
-		} else if (type === 'link') {
-			element.href = location + '/css/' + path;
-			element.rel = 'stylesheet';
-		}
-	}
-	element.id = id;
-	var atomEl = type === 'style' ? zeroForm.querySelector('.tn-atom') : null;
-	var appendParent = type === 'style' && atomEl ? atomEl : document.body;
-	appendParent.insertAdjacentElement('beforeend', element);
-}
-
-/**
- * create label for checkboxes, radio or img-select
- *
- * @param {'checkbox' | 'radio' | 'img-select'} type
- * @param {Object} labelStyles
- * @param {formObj | false} formObj
- * @returns {HTMLLabelElement}
- */
-function t_zeroForms__createLabel(type, labelStyles, formObj) {
-	var label = document.createElement('label');
-	label.classList.add('t-' + type + '__control');
-	if (labelStyles && labelStyles.fontSize) label.style.fontSize = labelStyles.fontSize + 'px';
-	if (labelStyles) label.style.fontWeight = labelStyles.fontWeight;
-	if (formObj && formObj.inputtitlecolor) label.style.color = formObj.inputtitlecolor;
-	if (formObj && formObj.inputfontfamily) label.style.fontFamily = formObj.inputfontfamily;
-	return label;
-}
-
-/**
- * create indicator for radio, checkbox and img-select fields
- *
- * @param {'checkbox' | 'radio' | 'img-select'} type
- * @param {string | undefined | false} colorStyle
- * @param {{ratio: string, img: string} | false} imgIndicatorOpts
- * @returns {HTMLDivElement}
- */
-function t_zeroForms__createIndicator(type, colorStyle, imgIndicatorOpts) {
-	var indicator = document.createElement('div');
-	indicator.classList.add('t-' + type + '__indicator');
-	if (colorStyle) indicator.style.borderColor = colorStyle;
-	if (type === 'img-select') {
-		indicator.classList.add('t-bgimg');
-		indicator.classList.add(imgIndicatorOpts.ratio);
-		indicator.setAttribute('data-original', imgIndicatorOpts.img);
-		indicator.style.backgroundImage = imgIndicatorOpts.img;
-	}
-	return indicator;
-}
-
-/**
- * create hidden input to contain checked checkboxes values
- *
- * @param {Object} inputPreferences
- * @param {HTMLDivElement} wrapper
- * @param {'img-select' | 'checkboxes'} type
- * @returns {HTMLInputElement}
- */
-function t_zeroForms__createNameFieldForCheckbox(inputPreferences, wrapper, type) {
-	var hiddenInput = document.createElement('input');
-	t_zeroForms__appendMainSettingToField(hiddenInput, inputPreferences, 'hidden', 't-' + type + '__hiddeninput');
-	hiddenInput.tabIndex = -1;
-	if (inputPreferences.require) hiddenInput.setAttribute('data-tilda-req', '1');
-	return hiddenInput;
-}
-
-/**
- * create hidden input
- *
- * @param {string} value
- * @param {string} name
- * @param {string} fieldClass
- * @returns {HTMLInputElement}
- */
-function t_zeroForms__createHiddenField(value, name, fieldClass) {
-	var input = document.createElement('input');
-	input.type = 'hidden';
-	input.tabIndex = -1;
-	if (value) input.value = value;
-	if (name) input.name = name;
-	if (fieldClass) input.classList.add(fieldClass);
-	return input;
-}
-
-/**
- * create wrapper of input fields
- *
- * @param {string | Array} ListOfClasses
- * @returns {HTMLDivElement}
- */
-function t_zeroForms__createWrapper(ListOfClasses) {
-	var wrapper = document.createElement('div');
-	if (typeof ListOfClasses === 'string') {
-		wrapper.classList.add(ListOfClasses);
-	} else {
-		ListOfClasses.forEach(function (className) {
-			wrapper.classList.add(className);
-		});
-	}
-	return wrapper;
-}
-
-/**
- * set for input type, name, and className
- *
- * @param {HTMLInputElement | HTMLSelectElement} input
- * @param {Object} inputPreferences
- * @param {string} type
- * @param {Array | string} supportClassList
- */
-function t_zeroForms__appendMainSettingToField(input, inputPreferences, type, supportClassList) {
-	if (type && type !== 'select') input.type = type;
-	input.name = inputPreferences.name || '';
-	if (!supportClassList) input.classList.add('t-input');
-	if (supportClassList) {
-		if (typeof supportClassList === 'object') {
-			supportClassList.forEach(function (className) {
-				input.classList.add(className);
-			});
-		} else if (typeof supportClassList === 'string') {
-			input.classList.add(supportClassList);
-		}
-	}
-	input.classList.add('js-tilda-rule');
-}
-
-/**
- * create object with input styles, remove empty values and append px, if it necessary
- * @param {formObj} formObj
- * @param {string} inputFontWeight
- * @returns {{border: (string|string), backgroundColor: (string|string),
- * color: (string|string), borderRadius: (string|string),
- * fontSize: (string|string), fontWeight: string, height: (string|string)}}
- */
-function t_zeroForms__initInputStyles(formObj, inputFontWeight) {
-	var inputStyles = {
-		color: formObj.inputcolor || '',
-		// prettier-ignore
-		border: formObj.inputbordersize ? formObj.inputbordersize + 'px solid ' + formObj.inputbordercolor || '#000' : '',
-		backgroundColor: formObj.inputbgcolor || 'transparent',
-		borderRadius: formObj.inputradius || '',
-		fontSize: formObj.inputfontsize || '',
-		fontWeight: inputFontWeight || '',
-		height: formObj.inputheight || '',
-	};
-
-	var pxValues = ['fontSize', 'height', 'borderRadius'];
-	for (var k in inputStyles) {
-		if (!inputStyles[k]) {
-			delete inputStyles[k];
-		} else {
-			var isPxContains = pxValues.some(function (key) {
-				return key === k.toString();
-			});
-			if (isPxContains) inputStyles[k] += 'px';
-		}
-	}
-	return inputStyles;
-}
-
-/* ============== support functions ============== */
-
-/**
- * if zeroblock placed inside innactive tab, don't render it
- *
- * @param {HTMLElement} form
- * @returns {boolean}
- */
-function t_zeroForms__isRecordHidden(form) {
-	var classList = ['t397__off', 't395__off', 't400__off'];
-	return classList.some(function (className) {
-		return form.classList.contains(className);
-	});
-}
-
-/**
- * if form placed outsize zeroblock, don't render it
- *
- * @param {HTMLElement} form
- * @returns {boolean}
- */
-function t_zeroForms__isFormOutside(form) {
-	var parent = form.closest('.r');
-	if (!parent) return false;
-	var parentPos = parent.getBoundingClientRect();
-	var formPos = form.getBoundingClientRect();
-	if (formPos.right < 0 || formPos.left > parentPos.right + window.pageXOffset) return true;
-	return formPos.top > parentPos.bottom || formPos.bottom <= parentPos.top;
-}
-
-/**
- * get element, if in function provide jQuery el
- *
- * @param {jQuery | HTMLElement }el
- * @returns {HTMLElement}
- */
-function t_zeroForms__getEl(el) {
-	if (window.jQuery && el instanceof jQuery && el.length) return el.get(0);
-	return el;
-}
-
-function t_zeroForms__createSelector(recid, formID, selector) {
-	var style = window.tildamode === 'published' ? '#rec' + recid + ' ' : '';
-	style += '[data-elem-id="' + formID + '"]';
-	style += ' ' + selector;
-	return style;
-}
-
-/**
- * remove single and double quotes from string
- *
- * @param {string} str - current string
- * @returns {string | void}
- */
+* change string
+*
+* @param {string} str - current string
+* @returns {string | void} - changed string or void if str === undefined
+*/
 function t_zeroForms__escape(str) {
-	if (str) return str.replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+ if (typeof str != 'undefined') {
+	 str = str.replace(/"/g, '&quot;');
+	 str = str.replace(/'/g, '&apos;');
+ }
+ return str;
 }
 
 /**
- * transform parsed object with objects to array with objects to simplify work
- *
- * @param {Object} object
- * @returns {Array}
- */
-function t_zeroFormsFromObjToArray(object) {
-	var arrayOfOptions = window.t_zeroForms__isES6Support ? Object.values(object) : [];
-	if (!window.t_zeroForms__isES6Support) {
-		for (var k in object) {
-			arrayOfOptions.push(object[k]);
-		}
-	}
-	return arrayOfOptions;
-}
-
-/**
- * support function to update hidden input value,
- * after trigger checkboxes
- */
-function t_zeroForms__updateCheckboxesValues() {
-	var inputWrapper = this.closest('[data-input-lid]');
-	var checkedCheckboxes = Array.prototype.slice.call(inputWrapper.querySelectorAll('.t-checkbox:checked'));
-	var value = '';
-	checkedCheckboxes.forEach(checkbox => {
-		if (value) value += '; ';
-		value += checkbox.value;
-	});
-	var hiddenInput = inputWrapper.querySelector('.t-checkboxes__hiddeninput');
-	if (hiddenInput) hiddenInput.value = value;
-}
-
-/**
- * support function to update quanity count by click.
- * we should trigger input event to correct update calculation field
- *
- * @param e
- */
-function t_zeroForms__initQuanityClickCount(e) {
-	var quantityBtn = e.target.closest('.t-inputquantity__btn');
-	if (!quantityBtn) return;
-	var currentParent = quantityBtn.closest('[data-input-lid]');
-	var currentInput = currentParent.querySelector('.t-inputquantity');
-	var isMinusBtn = quantityBtn.closest('.t-inputquantity__btn-minus');
-	var event = document.createEvent('Event');
-	event.initEvent('input', true, true);
-	if (isMinusBtn) {
-		if (currentInput.value > 0) {
-			currentInput.value = Number(currentInput.value) - 1;
-			currentInput.dispatchEvent(event);
-		}
-	} else {
-		if (currentInput.value >= 0) {
-			currentInput.value = Number(currentInput.value) + 1;
-			currentInput.dispatchEvent(event);
-		}
-	}
-}
-
-/**
- * support function to close errorbox
- *
- * @param e
- */
-function t_zeroForms__initErrorBoxClose(e) {
-	var closeBtn = e.target.closest('.js-errorbox-close');
-	if (closeBtn) closeBtn.parentElement.style.display = 'none';
-}
-
-function t_zeroForms__onReady(func) {
-	document.readyState !== 'loading' ? func() : document.addEventListener('DOMContentLoaded', func);
-}
-
-/**
- * run callback function after render zero-form
- *
- * @param {HTMLElement} form
- * @param {Boolean} modeChecked
- * @param {Function} callback
- */
-function t_zeroForm__onRender(form, modeChecked, callback) {
-	if ((window.tildamode === 'edit' || window.tildamode === 'zero') && modeChecked) return;
-	t_zeroForms__onReady(function () {
-		form.classList.contains('zero-form-rendered') ? callback() : form.addEventListener('render', callback);
-	});
-}
-
-/**
- * get tildamode
- *
- * @returns {string|void} - void if attr in switch case cannot find current options
- */
+* get tildamode
+*
+* @returns {string|void} - void if attr in switch case cannot find current options
+*/
 function t_zeroForms__getTildaMode() {
-	if (typeof window.tildamode !== 'undefined') {
-		return window.tildamode;
-	}
-	var allRec = document.getElementById('allrecords');
-	if (allRec) {
-		switch (allRec.getAttribute('data-tilda-mode')) {
-			case 'edit':
-				window.tildamode = 'edit';
-				break;
-			case 'preview':
-				window.tildamode = 'preview';
-				break;
-			default:
-				window.tildamode = 'published';
-				break;
-		}
-	}
-	return window.tildamode;
+ if (typeof window.tildamode !== 'undefined') {
+	 return window.tildamode;
+ }
+ var allRec = document.getElementById('allrecords');
+ if (allRec) {
+	 switch (allRec.getAttribute('data-tilda-mode')) {
+		 case 'edit':
+			 window.tildamode = 'edit';
+			 break;
+		 case 'preview':
+			 window.tildamode = 'preview';
+			 break;
+		 default:
+			 window.tildamode = 'published';
+			 break;
+	 }
+ }
+ return window.tildamode;
 }
 
 /**
- *
- * @param zeroForm
- * @returns {formObj}
- */
-function t_zeroForms__createFormObj(zeroForm) {
-	var formObj = {};
-	// prettier-ignore
-	var fields = ['inputpos', 'inputfontfamily', 'inputfontsize', 'inputfontweight', 'inputvariationweight', 'inputcolor',
-		'inputbgcolor', 'inputbordercolor', 'inputbordersize', 'inputradius', 'inputheight', 'inputmargbottom', 'inputmargright',
-		'inputtitlefontsize', 'inputtitlefontweight', 'inputtitlevariationweight', 'inputtitlecolor', 'inputelscolor',
-		'inputelsfontsize', 'inputelsfontweight', 'inputelsvariationweight', 'inputtitlemargbottom', 'inputsstyle', 'inputsstyle2',
-		'buttontitle', 'buttonalign', 'buttoncolor', 'buttonbgcolor', 'buttonbordercolor', 'buttonbordersize', 'buttonradius',
-		'buttonmargtop', 'buttonwidth', 'buttonheight', 'buttonshadowsize', 'buttonshadowopacity', 'buttonfontfamily', 'buttonfontsize',
-		'buttonfontweight', 'buttonvariationweight', 'buttonuppercase', 'buttonbgcolorhover', 'buttoncolorhover', 'buttonbordercolorhover',
-		'buttonshadowsizehover', 'buttonshadowopacityhover', 'buttonspeedhover', 'formmsgsuccess', 'formmsgurl', 'formerrreq', 'formerremail',
-		'formerrphone', 'formerrname', 'formbottomtext', 'formbottomcb', 'formname', 'receivers'];
-
-	// elem__getFieldValue() used in zero-editor, t396_elem__getFieldValue() - in published pages
-	fields.forEach(function (field) {
-		formObj[field] =
-			window.tildamode === 'zero'
-				? elem__getFieldValue($(zeroForm), field)
-				: t396_elem__getFieldValue(zeroForm, field);
-	});
-	return formObj;
+* styles for horizontal form
+*
+* @returns {string} - string, which will parse into HTML
+*/
+function t_zeroForms__getHorizStyles() {
+ var str = '';
+ str += '<style>';
+ str += '.tn-form_horiz .t-section__topwrapper { margin-bottom: 75px; }';
+ str += '.tn-form_horiz .t-section__title { margin-bottom: 30px; }';
+ str += '.tn-form_horiz .t-section__descr { max-width: 560px; }';
+ str += '.tn-form_horiz.t-form_inputs-total_5 .t-input-group{ width: 20%; }';
+ str += '.tn-form_horiz.t-form_inputs-total_4 .t-input-group{ width: 25%; }';
+ str += '.tn-form_horiz.t-form_inputs-total_3 .t-input-group{ width: 33.33%; }';
+ str += '.tn-form_horiz.t-form_inputs-total_2 .t-input-group{ width: 50%; }';
+ str += '.tn-form_horiz.t-form_inputs-total_1 .t-input-group{ width: 100%; }';
+ str +=
+	 '.tn-form_horiz .t-form__inputsbox{ display:table; -webkit-transition: max-height 0.3s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.3s linear; transition: max-height 0.3s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.3s linear; max-height: 5000px;	}';
+ str +=
+	 '.tn-form_horiz__inputsbox_hidden.t-form__inputsbox { display: block; overflow: hidden; max-height: 0px; opacity: 0; }';
+ str += '.tn-form_horiz .t-input-group { display: table-cell; vertical-align: bottom; }';
+ str += '.tn-form_horiz .t-input-block{ height: 100%; width:100%; box-sizing: border-box; }';
+ str += '.tn-form_horiz .t-input-title { padding-bottom: 5px; }';
+ str += '.tn-form_horiz .t-input-subtitle{ margin-top: -5px; padding-bottom: 10px; }';
+ str += '.tn-form_horiz .t-form__submit,';
+ str += '.tn-form_horiz .tn-form__submit{ display: table-cell; vertical-align: bottom; height: 100%;	}';
+ str += '.tn-form_horiz .t-datepicker{ width: 100%; }';
+ str += '.tn-form_horiz .t-form_bbonly .t-input-title{ padding-bottom: 0; margin-bottom: 0; }';
+ str += '.tn-form_horiz .t-form_bbonly .t-input-subtitle{ padding-bottom: 0; padding-top: 5px; }';
+ str += '.tn-form_horiz .t-input-error { display:none !important; }';
+ str += '</style>';
+ return str;
 }
+
+/**
+* adding styles for .t-input-block
+*
+* @returns {string} - styles
+*/
+function t_zeroForms__getCommonStyles() {
+ var str = '';
+ str += '<style>';
+ str += '.tn-atom .t-input-block {position: relative;}';
+ str += '</style>';
+ return str;
+}
+
+/**
+*
+* @param {HTMLElement} el - current form
+* @param {Object} a - object with params
+* @param {string} recid - record ID
+* @returns {string} - string, which will parse into HTML
+*/
+function t_zeroForms__getBottomText(el, a, recid) {
+ var str = '';
+
+ if (a.formbottomcb === 'cb' || a.formbottomcb === 'cbx') {
+	 // var formhaschrdbox = 'yes';
+	 str +=
+		 '<label class="t-checkbox__control t-text t-text_xxs" style="' +
+		 (a.inputtitlecolor ? 'color:' + a.inputtitlecolor + ';' : '') +
+		 '">';
+	 str +=
+		 '<input type="checkbox" name="form_bottom_checkbox" value="yes" class="t-checkbox js-tilda-rule" data-tilda-req="1" ' +
+		 (a.formbottomcb === 'cbx' ? 'checked' : '') +
+		 '><div class="t-checkbox__indicator" style="width:15px;height:15px;margin-right:5px;' +
+		 (a.inputelscolor ? 'border-color:' + a.inputelscolor + ';' : '') +
+		 '"></div><div class="t-checkbox__labeltext" style="display:inline;">' +
+		 a.formbottomtext +
+		 '</div></label>';
+	 str += '<style>';
+	 if (recid > 0) str += '#rec' + recid + ' ';
+	 str +=
+		 '#rec' +
+		 recid +
+		 ' .tn-elem[data-elem-id="' +
+		 (el.getAttribute('data-elem-id') ? el.getAttribute('data-elem-id') : '') +
+		 '"] .t-form__bottom-text .t-checkbox__indicator:after {';
+	 if (a.inputelscolor) {
+		 str += 'border-color:' + a.inputelscolor + ';';
+	 }
+	 str += 'left:3px;top:0;height:6px;';
+	 str += '}';
+	 str += '</style>';
+ } else if (a.formbottomtext) {
+	 str += a.formbottomtext;
+ }
+ return str;
+}
+
+/**
+* animate inputs
+*
+* @param {HTMLElement} el - current form element
+* @param {Object} a - object with params
+* @param {string} recid - record ID
+*/
+function t_zeroForms__animateInputs(el, a, recid) {
+ if (a.inputcolor) {
+	 var str = '<style class="t-zero-forms-s">';
+	 if (recid > 0) str += '#rec' + recid + ' ';
+	 str +=
+		 '.tn-elem[data-elem-id="' +
+		 (el.getAttribute('data-elem-id') ? el.getAttribute('data-elem-id') : '') +
+		 '"] .t-input__vis-ph{color:' +
+		 a.inputcolor +
+		 ';}';
+	 str += '</style>';
+	 document.head.insertAdjacentHTML('beforeend', str);
+ }
+
+ var ph_top = '';
+ if (a.inputheight && a.inputfontsize) {
+	 ph_top = (a.inputheight * 1 - a.inputfontsize * 1) / 2;
+ }
+
+ var inputs = el.querySelectorAll(
+	 '.t-input:not(.t-inputquantity):not(.t-input-phonemask__wrap):not(.t-input-phonemask)'
+ );
+ var fontInputWeight = a.inputfontweight === 'variation' ? a.inputvariationweight : a.inputfontweight;
+ var inputsGroup = el.querySelectorAll(
+	 '.t-input-group:not(.t-input-group_da):not(.t-input-group_uw):not(.t-input-group_ri):not(.t-input-group_cb):not(.t-input-group_rg):not(.t-input-group_ph) .t-input-block, .t-datepicker__wrapper'
+ );
+ Array.prototype.forEach.call(inputsGroup, function (input) {
+	 input.style.position = 'relative';
+	 input.style.overflow = 'hidden';
+ });
+ Array.prototype.forEach.call(inputs, function (input) {
+	 input.classList.add('t-input_pvis');
+	 var placeholder = input.getAttribute('placeholder');
+	 if (placeholder) {
+		 input.insertAdjacentHTML(
+			 'afterend',
+			 '<div class="t-input__vis-ph" style="' +
+				 (ph_top ? 'top:' + ph_top + 'px;' : '') +
+				 (fontInputWeight ? 'font-weight:' + fontInputWeight + ';' : '') +
+				 (a.inputfontsize
+					 ? 'font-size:' + a.inputfontsize + 'px;height:' + (parseInt(a.inputfontsize, 10) + 1) + 'px;' //increase height for 1 px, to prevent cutting
+					 : '') +
+				 '">' +
+				 placeholder +
+				 '</div>'
+		 );
+	 }
+	 input.setAttribute('placeholder', '');
+
+	 input.addEventListener('blur', function (e) {
+		 if (e.target.value) {
+			 e.target.classList.add('t-input_has-content');
+		 } else {
+			 e.target.classList.remove('t-input_has-content');
+		 }
+	 });
+ });
+ if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+	 var textareaNotBBOnly = el.querySelectorAll('textarea:not(.t-input_bbonly)');
+	 var textareaBBOnly = el.querySelectorAll('textarea.t-input_bbonly');
+	 Array.prototype.forEach.call(textareaNotBBOnly, function (textarea) {
+		 textarea.style.paddingLeft = '17px';
+	 });
+	 Array.prototype.forEach.call(textareaBBOnly, function (textarea) {
+		 textarea.style.textIndent = '-3px';
+	 });
+ }
+}
+
+window.tilda_zero_forms_js_ver = 1;
 
 // Polyfill: Element.prototype.matches
 if (!Element.prototype.matches) {
-	Element.prototype.matches =
-		Element.prototype.matchesSelector ||
-		Element.prototype.msMatchesSelector ||
-		Element.prototype.mozMatchesSelector ||
-		Element.prototype.webkitMatchesSelector ||
-		Element.prototype.oMatchesSelector;
+ Element.prototype.matches =
+	 Element.prototype.matchesSelector ||
+	 Element.prototype.msMatchesSelector ||
+	 Element.prototype.mozMatchesSelector ||
+	 Element.prototype.webkitMatchesSelector ||
+	 Element.prototype.oMatchesSelector;
 }
 // Polyfill: Element.closest
 if (!Element.prototype.closest) {
-	Element.prototype.closest = function (s) {
-		var el = this;
+ Element.prototype.closest = function (s) {
+	 var el = this;
 
-		while (el && el.nodeType === 1) {
-			if (Element.prototype.matches.call(el, s)) {
-				return el;
-			}
-			el = el.parentElement || el.parentNode;
-		}
+	 while (el && el.nodeType === 1) {
+		 if (Element.prototype.matches.call(el, s)) {
+			 return el;
+		 }
+		 el = el.parentElement || el.parentNode;
+	 }
 
-		return null;
-	};
+	 return null;
+ };
 }
