@@ -1,160 +1,255 @@
 /**
- * tilda-zoom-2.0 use in case user add action in his block by the setting "zoom image on click". It's can be in blocks category image, catalog, about, news, feeds, and gallery (carousel or img blocks grid)
+ * tilda-zoom подключается когда в настройках блока пользователь включает "увеличение изображения по клику".
+ * Такая функция есть у блоков из категории изображений, каталога, новостей, фидов,
+ * галереи (карусель или просто сетка картинок).
+ *
+ * На странице создается пустой див '.t-zoomer__wrapper', который содержит в себе пустые дивы с контейнером, фоном, и т.д.
+ * При клике на элемент, где tilda-zoom активирован, в этот блок добавляется контент с триггерного элемента
+ * и его рядом стоящих элементов (если они есть).
+ * Если элементов несколько, то дополнительно добавляется по бокам два клонированных элемента,
+ * чтобы обеспечить бесконечное перелистывание созданной zoom-карусели.
+ *
+ * Для мобильной версии используется библиотека Hammer (для событий по свайпу, двойному тапу, и т.д.).
  */
-if (document.readyState !== 'loading') {
-	if (!window.tzoominited) {
-		t_zoom_onFuncLoad('t_initZoom', t_initZoom);
+// global variables declaration
+window.t_zoom__isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+window.t_zoom__isiOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+window.t_zoom__iOSMajorVersion = 0;
+if (window.t_zoom__isiOS) {
+	var version = navigator.appVersion.match(/OS (\d+)_(\d+)_?(\d+)?/);
+	if (version !== null) {
+		window.t_zoom__iOSMajorVersion = parseInt(version[1], 10);
 	}
-} else {
-	document.addEventListener('DOMContentLoaded', function () {
-		if (!window.tzoominited) {
-			t_zoom_onFuncLoad('t_initZoom', t_initZoom);
+}
+
+t_onReady(function () {
+	if (!window.tzoominited) t_initZoom();
+});
+
+/**
+ * get zoomerWrapper element, and if it doesn't exist - create carousel with zoom in modal
+ */
+function t_initZoom() {
+	var zoomerWrapper = document.querySelector('.t-zoomer__wrapper');
+	if (zoomerWrapper) return;
+
+	window.tzoominited = true;
+	window.tzoomopenonce = false;
+	window.isDoubletapScaleAdded = false;
+
+	//prettier-ignore
+	var zoomableElmnts = document.querySelectorAll('[data-zoomable="yes"]:not(.t-slds__thumbs_gallery):not([data-img-zoom-url=""])');
+	Array.prototype.forEach.call(zoomableElmnts, function (zoomableEl) {
+		zoomableEl.classList.add('t-zoomable');
+	});
+
+	//create zoom wrapper and append handlers for it
+	var zoomWrapper = document.createElement('div');
+	zoomWrapper.classList.add('t-zoomer__wrapper');
+	var zoomContainer = document.createElement('div');
+	zoomContainer.classList.add('t-zoomer__container');
+	var zoomBG = document.createElement('div');
+	zoomBG.classList.add('t-zoomer__bg');
+	var zoomCloseBtn = t_zoom__createCloseBtn();
+	var scaleBtn = t_zoom__createScaleBtn();
+
+	// and append it to body
+	zoomWrapper.appendChild(zoomContainer);
+	zoomWrapper.appendChild(zoomBG);
+	zoomWrapper.appendChild(zoomCloseBtn);
+	zoomWrapper.appendChild(scaleBtn);
+	document.body.insertAdjacentElement('beforeend', zoomWrapper);
+
+	t_zoom__initFullScreenImgOnClick();
+	t_zoom__closeAndSlideCarousel();
+}
+
+/**
+ * create close btn for zoomer wrapper
+ *
+ * @return {HTMLDivElement} - close btn
+ */
+function t_zoom__createCloseBtn() {
+	var zoomCloseBtn = document.createElement('div');
+	zoomCloseBtn.classList.add('t-zoomer__close');
+	zoomCloseBtn.style.display = 'none';
+	var svgCloseBtn = '';
+	/*@formatter:off*/
+	svgCloseBtn += '<svg width="20" height="20" viewBox="0 0 23 23" fill="none" xmlns="http://www.w3.org/2000/svg">';
+	svgCloseBtn +=
+		'<path d="M1.41421 -0.000151038L0 1.41406L21.2132 22.6273L22.6274 21.2131L1.41421 -0.000151038Z" fill="black"/>';
+	svgCloseBtn +=
+		'<path d="M22.6291 1.41421L21.2148 0L0.00164068 21.2132L1.41585 22.6274L22.6291 1.41421Z" fill="black"/>';
+	svgCloseBtn += '</svg>';
+	/*@formatter:on*/
+	zoomCloseBtn.insertAdjacentHTML('beforeend', svgCloseBtn);
+	return zoomCloseBtn;
+}
+
+/**
+ * create scale btn for zoomer wrapper
+ *
+ * @return {HTMLDivElement} - scale btn
+ */
+function t_zoom__createScaleBtn() {
+	var scaleBtn = document.createElement('div');
+	scaleBtn.classList.add('t-zoomer__scale');
+	scaleBtn.classList.add('showed');
+	var svgScaleBtn = '';
+	svgScaleBtn +=
+		'<svg class="icon-increase" width="20" height="20" viewBox="0 0 25 24" fill="none" xmlns="http://www.w3.org/2000/svg">';
+	svgScaleBtn += '<path d="M22.832 22L17.8592 17.0273" stroke="black" stroke-width="2" stroke-linecap="square"/>';
+	svgScaleBtn +=
+		'<path fill-rule="evenodd" clip-rule="evenodd" d="M4.58591 3.7511C0.917768 7.41924 0.917768 13.367 4.58591 17.0352C8.25405 20.7033 14.2019 20.7033 17.87 17.0352C21.5381 13.367 21.5381 7.41924 17.87 3.7511C14.2019 0.0829653 8.25405 0.0829653 4.58591 3.7511Z" stroke="black" stroke-width="2"/>';
+	svgScaleBtn += '<path d="M6.25781 10.3931H16.2035" stroke="black" stroke-width="2"/>';
+	svgScaleBtn += '<path d="M11.2305 15.3662V5.42053" stroke="black" stroke-width="2"/>';
+	svgScaleBtn += '</svg>';
+	svgScaleBtn +=
+		'<svg class="icon-decrease" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">';
+	svgScaleBtn += '<path d="M21.9961 22L17.0233 17.0273" stroke="black" stroke-width="2" stroke-linecap="square"/>';
+	svgScaleBtn +=
+		'<path fill-rule="evenodd" clip-rule="evenodd" d="M3.74997 3.7511C0.0818308 7.41924 0.0818308 13.367 3.74997 17.0352C7.41811 20.7033 13.3659 20.7033 17.0341 17.0352C20.7022 13.367 20.7022 7.41924 17.0341 3.7511C13.3659 0.0829653 7.41811 0.0829653 3.74997 3.7511Z" stroke="black" stroke-width="2"/>';
+	svgScaleBtn += '<path d="M5.41797 10.3931H15.3637" stroke="black" stroke-width="2"/>';
+	svgScaleBtn += '</svg>';
+	scaleBtn.insertAdjacentHTML('beforeend', svgScaleBtn);
+	return scaleBtn;
+}
+
+/**
+ * create listeners for document and window to open zoomer
+ * and check for scale in case of resize/orientationchange
+ */
+function t_zoom__initFullScreenImgOnClick() {
+	document.addEventListener('click', function (e) {
+		//prettier-ignore
+		var zoomableElement = e.target.closest('.t-zoomable:not([data-img-zoom-url=""]), .t-slds__thumbs_gallery-zoomable');
+		if (zoomableElement) t_zoomHandler(zoomableElement);
+	});
+	var currentEvent = window.t_zoom__isMobile ? 'orientationchange' : 'resize';
+	window.addEventListener(currentEvent, function () {
+		if (document.body.classList.contains('t-zoomer__show')) {
+			t_zoom_checkForScale();
 		}
 	});
 }
 
 /**
- * get zoomerWrapper element, and if it exist - create carousel with zoom in modal
+ * close carousel by close btn and key ESC,
+ * change slide by arrow key in keyboard
  */
-function t_initZoom() {
-	var zoomerWrapper = document.querySelectorAll('.t-zoomer__wrapper');
-	if (!zoomerWrapper.length) {
-		window.tzoominited = true;
-		window.tzoomopenonce = false;
-		window.isDoubletapScaleAdded = false;
-		var zoomableElmnts = document.querySelectorAll('[data-zoomable="yes"]:not(.t-slds__thumbs_gallery):not([data-img-zoom-url=""])');
-		Array.prototype.forEach.call(zoomableElmnts, function (zoomableEl) {
-			zoomableEl.classList.add('t-zoomable');
-		});
-		document.body.insertAdjacentHTML('beforeend',
-			'<div class="t-zoomer__wrapper">' +
-			'<div class="t-zoomer__container">' +
-			'</div>' +
-			'<div class="t-zoomer__bg"></div>' +
-			'<div class="t-zoomer__close" style="display:none;">' +
-			'<svg width="20" height="20" viewBox="0 0 23 23" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-			'<path d="M1.41421 -0.000151038L0 1.41406L21.2132 22.6273L22.6274 21.2131L1.41421 -0.000151038Z" fill="black"/>' +
-			'<path d="M22.6291 1.41421L21.2148 0L0.00164068 21.2132L1.41585 22.6274L22.6291 1.41421Z" fill="black"/>' +
-			'</svg>' +
-			'</div>' +
-			'</div>');
-
-		document.querySelector('.t-zoomer__wrapper').insertAdjacentHTML('beforeend',
-			'<div class="t-zoomer__scale showed" style="display:none;">' +
-			'<svg class="icon-increase" width="20" height="20" viewBox="0 0 25 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-			'<path d="M22.832 22L17.8592 17.0273" stroke="black" stroke-width="2" stroke-linecap="square"/>' +
-			'<path fill-rule="evenodd" clip-rule="evenodd" d="M4.58591 3.7511C0.917768 7.41924 0.917768 13.367 4.58591 17.0352C8.25405 20.7033 14.2019 20.7033 17.87 17.0352C21.5381 13.367 21.5381 7.41924 17.87 3.7511C14.2019 0.0829653 8.25405 0.0829653 4.58591 3.7511Z" stroke="black" stroke-width="2"/>' +
-			'<path d="M6.25781 10.3931H16.2035" stroke="black" stroke-width="2"/>' +
-			'<path d="M11.2305 15.3662V5.42053" stroke="black" stroke-width="2"/>' +
-			'</svg>' +
-			'<svg class="icon-decrease" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-			'<path d="M21.9961 22L17.0233 17.0273" stroke="black" stroke-width="2" stroke-linecap="square"/>' +
-			'<path fill-rule="evenodd" clip-rule="evenodd" d="M3.74997 3.7511C0.0818308 7.41924 0.0818308 13.367 3.74997 17.0352C7.41811 20.7033 13.3659 20.7033 17.0341 17.0352C20.7022 13.367 20.7022 7.41924 17.0341 3.7511C13.3659 0.0829653 7.41811 0.0829653 3.74997 3.7511Z" stroke="black" stroke-width="2"/>' +
-			'<path d="M5.41797 10.3931H15.3637" stroke="black" stroke-width="2"/>' +
-			'</svg>' +
-			'</div>'
-		);
-
-		t_zoom__initFullScreenImgOnClick();
-		t_zoom__closeCarousel();
-	}
-}
-
-function t_zoom__initFullScreenImgOnClick() {
-	var sections = document.querySelectorAll('.r');
-	Array.prototype.forEach.call(sections, function (section) {
-		section.addEventListener('click', function (e) {
-			var target = e.target;
-			for (target; target && target !== this; target = target.parentNode) {
-				if (target.matches('.t-zoomable:not([data-img-zoom-url=""])') || target.matches('.t-slds__thumbs_gallery-zoomable')) {
-					t_zoomHandler.call(target, e);
-					break;
-				}
-			}
-		});
+function t_zoom__closeAndSlideCarousel() {
+	var closeBtn = document.querySelector('.t-zoomer__close');
+	if (!closeBtn) return;
+	closeBtn.addEventListener('click', function () {
+		t_zoom_close();
 	});
-}
 
-function t_zoom__closeCarousel() {
-	var zoomerCloseAndBg = document.querySelectorAll('.t-zoomer__close, .t-zoomer__bg');
-	Array.prototype.forEach.call(zoomerCloseAndBg, function (el) {
-		el.addEventListener('click', function () {
-			t_zoom_close();
-			var isPopupShown = !!document.querySelectorAll('.t-popup_show').length;
-			if (isPopupShown) {
-				document.addEventListener('keydown', function (e) {
-					if (e.keyCode === 27 && window.t_store_closePopup) {
-						t_store_closePopup(false);
-					}
-				});
+	document.addEventListener('keydown', function (e) {
+		if (document.body.classList.contains('t-zoomer__show')) {
+			switch (e.keyCode) {
+				case 27: //esc
+					e.preventDefault();
+					t_zoom_close();
+					break;
+				case 37: //arrow left
+					t_zoom__setEventOnBtn('prev');
+					break;
+				case 39: //arrow right
+					t_zoom__setEventOnBtn('next');
+					break;
 			}
-		});
+		}
 	});
 }
 
 /**
  * init zoom controls (arrows/dots)
+ *
  * @returns {false| void} false - in case of JS cannot find parent (.r) or zoomerWrapper
  */
-function t_zoomHandler() {
-	//this in this context - e.target when user clicked on '.t-zoomable:not([data-img-zoom-url=""])' or '.t-slds__thumbs_gallery-zoomable' block (this block itself)
-	var targetElement = this;
+function t_zoomHandler(targetElement) {
 	document.body.classList.add('t-zoomer__show');
-	var zoomerContainers = document.querySelectorAll('.t-zoomer__container');
-	Array.prototype.forEach.call(zoomerContainers, function (zoomerContainer) {
-		zoomerContainer.innerHTML = '<div class="t-carousel__zoomed">' +
-			'<div class="t-carousel__zoomer__slides">' +
-			'<div class="t-carousel__zoomer__inner">' +
-			'<div class="t-carousel__zoomer__track">' +
-			'</div>' +
-			'</div>' +
-			'<div class="t-carousel__zoomer__control t-carousel__zoomer__control_left" data-zoomer-slide="prev">' +
-			'<div class="t-carousel__zoomer__arrow__wrapper t-carousel__zoomer__arrow__wrapper_left">' +
-			'<div class="t-carousel__zoomer__arrow t-carousel__zoomer__arrow_left t-carousel__zoomer__arrow_small"></div>' +
-			'</div>' +
-			'</div>' +
-			'<div class="t-carousel__zoomer__control t-carousel__zoomer__control_right" data-zoomer-slide="next">' +
-			'<div class="t-carousel__zoomer__arrow__wrapper t-carousel__zoomer__arrow__wrapper_right">' +
-			'<div class="t-carousel__zoomer__arrow t-carousel__zoomer__arrow_right t-carousel__zoomer__arrow_small"></div>' +
-			'</div>' +
-			'</div>' +
-			'</div>' +
-			'</div>';
-	});
+
+	// if zoomer popup opened from card popup, add .t-zoomer__active to body
+	var isProductPopupShown = document.querySelector('.t-popup_show');
+	if (isProductPopupShown) document.body.classList.add('t-zoomer__active');
+
+	var zoomContainer = document.querySelector('.t-zoomer__container');
+	// create zoomer carousel
+	var zoomerCarousel = document.createElement('div');
+	zoomerCarousel.classList.add('t-carousel__zoomed');
+	var zoomerSlide = document.createElement('div');
+	zoomerSlide.classList.add('t-carousel__zoomer__slides');
+
+	// create zoomer inner and track
+	var zoomerInner = document.createElement('div');
+	zoomerInner.classList.add('t-carousel__zoomer__inner');
+	var zoomerTrack = document.createElement('div');
+	zoomerTrack.classList.add('t-carousel__zoomer__track');
+	zoomerInner.appendChild(zoomerTrack);
+
+	//create arrows
+	var leftArrow = t_zoom_createSliderArrow('left');
+	var rightArrow = t_zoom_createSliderArrow('right');
+	zoomerSlide.appendChild(leftArrow);
+	zoomerSlide.appendChild(rightArrow);
+
+	zoomerSlide.appendChild(zoomerInner);
+	zoomerCarousel.appendChild(zoomerSlide);
+	if (zoomContainer) zoomContainer.innerHTML = '';
+	if (zoomContainer) zoomContainer.appendChild(zoomerCarousel);
 
 	var parentBlock = targetElement.closest('.r');
-
-	if (!parentBlock) return false;
-
 	var sliderTrack = document.querySelector('.t-carousel__zoomer__track');
-
-	if (!sliderTrack) return false;
+	if (!sliderTrack || !parentBlock) return false;
 
 	t_zoom__addingImgsIntoCarousel(targetElement);
 
 	var closeBtn = document.querySelector('.t-zoomer__close');
-	if (closeBtn) {
-		closeBtn.style.display = 'flex';
-	}
+	if (closeBtn) closeBtn.style.display = 'flex';
 
 	t_zoom_setModalColor(parentBlock);
 	t_zoom__createAndLoopSlider(targetElement);
 	t_zoom__getEventOnBtn();
-	t_zoom__closeZoomOnKeyup();
 
 	document.body.classList.add('t-zoomer__show_fixed');
 
 	t_zoom__initSingleZoom();
-	t_zoom__setEventOnZoomerInner();
 	t_zoom_checkForScale();
 	t_zoom_lockScroll();
-	t_zoom_initSwipe();
-	t_zoom_initCloseSwipe();
+	if (window.t_zoom__isMobile || 'ontouchend' in document) {
+		t_zoom_initSwipe();
+		t_zoom_initCloseSwipe();
+	}
 	t_zoom_initResizeListener();
 
 	window.tzoomopenonce = true;
 
 	t_zoom__initEventsonMobile();
+}
+
+/**
+ * create arrow slide
+ *
+ * @param {String} direction - prev/next
+ * @return {HTMLDivElement}
+ */
+function t_zoom_createSliderArrow(direction) {
+	var ArrowContainer = document.createElement('div');
+	ArrowContainer.classList.add('t-carousel__zoomer__control');
+	ArrowContainer.classList.add('t-carousel__zoomer__control_' + direction);
+	ArrowContainer.setAttribute('data-zoomer-slide', direction === 'left' ? 'prev' : 'next');
+	var ArrowWrapper = document.createElement('div');
+	ArrowWrapper.classList.add('t-carousel__zoomer__arrow__wrapper');
+	ArrowWrapper.classList.add('t-carousel__zoomer__arrow__wrapper_' + direction);
+	var arrow = document.createElement('div');
+	arrow.classList.add('t-carousel__zoomer__arrow');
+	arrow.classList.add('t-carousel__zoomer__arrow_' + direction);
+	arrow.classList.add('t-carousel__zoomer__arrow_small');
+	ArrowWrapper.appendChild(arrow);
+	ArrowContainer.appendChild(ArrowWrapper);
+	return ArrowContainer;
 }
 
 /**
@@ -184,9 +279,7 @@ function t_zoom_initSwipe() {
 		var sliderTrackPosLeft = null;
 		var isScaled = false;
 
-		//TODO: перенес условие выше, перед всеми инитами, тк при каждой инициализации sliderTrack всё равно остается в DOM, и на него накладываются ивенты hammer'а. Если я что-то не учел/не увидел, то поправьте, я верну на прежнее место.
 		if (!window.tzoomopenonce) {
-
 			hammer.on('panstart', function () {
 				//reinit sliderTrack for this func
 				var sliderTrack = document.querySelector('.t-carousel__zoomer__track');
@@ -208,7 +301,6 @@ function t_zoom_initSwipe() {
 				var sliderTrackTransition = sliderTrack.getAttribute('data-on-transition');
 				var modalOnDrag = modal.getAttribute('data-on-drag');
 				if (sliderTrackTransition !== 'y' && modalOnDrag !== 'y' && event.maxPointers === 1 && !isScaled) {
-
 					var deltaX = Math.abs(event.deltaX);
 
 					if (deltaX > 40) {
@@ -228,16 +320,14 @@ function t_zoom_initSwipe() {
 				sliderTrack.setAttribute('data-on-drag', '');
 				var sliderTrackTransition = sliderTrack.getAttribute('data-on-transition');
 				var modalOnDrag = modal.getAttribute('data-on-drag');
-				if (sliderTrackTransition !== 'y' && modalOnDrag !== 'y' &&
-					event.maxPointers === 1 &&
-					!isScaled) {
+				if (sliderTrackTransition !== 'y' && modalOnDrag !== 'y' && event.maxPointers === 1 && !isScaled) {
 					sliderTrack.style.transition = '';
 					var velocity = Math.abs(event.velocityX);
 					var sliderTrackOffset = sliderTrack.offsetLeft;
 					var slideWidth = slideItems[0].offsetWidth;
 					var targetSlideOffset = sliderTrack.querySelector('.t-carousel__zoomer__item.active').offsetLeft;
 					var distance = slideWidth - Math.abs(sliderTrackOffset + targetSlideOffset);
-					var transitionTime = (distance / velocity) / 1000;
+					var transitionTime = distance / velocity / 1000;
 
 					if (transitionTime > 0.6) {
 						transitionTime = 0.6;
@@ -264,15 +354,17 @@ function t_zoom_initSwipe() {
 	}
 }
 
+/**
+ * hide controls when user is idle
+ */
 function t_zoom__initEventsonMobile() {
-	if (window.isMobile) {
-		t_zoom_setHideControlsTimer();
-		var modal = document.querySelector('.t-zoomer__wrapper');
-		var modalListeners = ['touchstart', 'touchmove', 'touchend', 'mousemove'];
-		Array.prototype.forEach.call(modalListeners, function (listener) {
-			modal.addEventListener(listener, t_zoom_setHideControlsTimer);
-		});
-	}
+	if (!window.t_zoom__isMobile) return;
+	t_zoom_setHideControlsTimer();
+	var modal = document.querySelector('.t-zoomer__wrapper');
+	var modalEvents = ['touchstart', 'touchmove', 'touchend', 'mousemove'];
+	modalEvents.forEach(function (event) {
+		modal.addEventListener(event, t_zoom_setHideControlsTimer);
+	});
 }
 
 /**
@@ -288,180 +380,206 @@ function t_zoom__initSingleZoom() {
 	}
 }
 
-function t_zoom__closeZoomOnKeyup() {
-	// TODO: удалить после рефакторинга блоков ST
-	if (typeof jQuery !== 'undefined') {
-		$(document).unbind('keydown');
-	}
-	document.onkeydown = null;
-	var isPopupShown = !!document.querySelectorAll('.t-popup_show').length;
-	document.onkeydown = function (e) {
-		switch (e.keyCode) {
-			case 37:
-				t_zoom__setEventOnBtn('prev');
-				break;
-			case 39:
-				t_zoom__setEventOnBtn('next');
-				break;
-			case 27:
-				t_zoom_close();
-				if (isPopupShown) {
-					document.onkeydown = function (e) {
-						if (e.keyCode === 27) {
-							t_store_closePopup(false);
-						}
-					};
-				}
-				break;
-			default:
-				break;
-		}
-	};
-}
-
-function t_zoom__setEventOnZoomerInner() {
-	var carouselZooomerInner = document.querySelector('.t-carousel__zoomer__inner');
-	carouselZooomerInner.addEventListener('click', function () {
-		if (window.isMobile) return false;
-		if (carouselZooomerInner.classList.contains('scale-active')) {
-			t_zoom_unscale();
-		} else {
-			t_zoom_close();
-		}
-	});
-}
-
+/**
+ * get and set events on prev/next btns
+ */
 function t_zoom__getEventOnBtn() {
-	var navBtns = [{
-		name: 'right',
-		move: 'next'
-	},
-	{
-		name: 'left',
-		move: 'prev'
-	}];
+	var navBtns = [
+		{
+			name: 'right',
+			direction: 'next',
+		},
+		{
+			name: 'left',
+			direction: 'prev',
+		},
+	];
 
-	Array.prototype.forEach.call(navBtns, function (navBtn) {
+	navBtns.forEach(function (navBtn) {
 		var arrowBtn = document.querySelector('.t-carousel__zoomer__control_' + navBtn.name);
 		arrowBtn.addEventListener('click', function () {
-			t_zoom__setEventOnBtn(navBtn.move);
+			t_zoom__setEventOnBtn(navBtn.direction);
 		});
 	});
 }
 
+/**
+ * get button direction and show slide
+ *
+ * @param {String} btnMove - next or prev
+ */
 function t_zoom__setEventOnBtn(btnMove) {
 	var sliderTrack = document.querySelector('.t-carousel__zoomer__track');
 	var modal = document.querySelector('.t-zoomer__wrapper');
 	var sliderOnTransition = sliderTrack.getAttribute('data-on-transition');
 	var modalOnDrag = modal.getAttribute('data-on-drag');
-	if (sliderOnTransition !== 'y' && modalOnDrag !== 'y') {
-		t_zoom_unscale();
-		setTimeout(function () {
-			t_zoom_showSlide(btnMove);
-			t_zoom_checkForScale();
-		});
-	}
+	if (sliderOnTransition === 'y' || modalOnDrag === 'y') return;
+	t_zoom_unscale();
+	setTimeout(function () {
+		t_zoom_showSlide(btnMove);
+		t_zoom_checkForScale();
+	});
 }
 
+/**
+ * create slides for zoomer carousel:
+ * from target element will find parent with all slides,
+ * iterate them and check if exist data-img-zoom-url, description, title, etc., and append all of them to slider track
+ *
+ * @param targetElement
+ */
 function t_zoom__addingImgsIntoCarousel(targetElement) {
 	var parentBlock = targetElement.closest('.r');
-	var images = parentBlock.querySelectorAll('.t-zoomable:not(.t-slds__thumbs_gallery):not(.tn-atom__slds-img)');
-
-	if (parentBlock.querySelectorAll('.t-slds').length) {
+	//prettier-ignore
+	var images = parentBlock ? parentBlock.querySelectorAll('.t-zoomable:not(.t-slds__thumbs_gallery):not(.tn-atom__slds-img)') : [];
+	var slide = parentBlock ? parentBlock.querySelector('.t-slds') : null;
+	// check if target element placed inside slider
+	if (slide) {
 		var slider = targetElement.closest('.t-slds');
-		if (slider) {
-			images = slider.querySelectorAll('.t-zoomable:not(.t-slds__thumbs_gallery)');
+		if (slider) images = slider.querySelectorAll('.t-zoomable:not(.t-slds__thumbs_gallery)');
+
+		// remove one duplicated slide from zeroblock gallery if this gallery contains video
+		if (slider && slider.querySelector('.tn-elem__gallery__video-wrapper')) {
+			images = Array.prototype.slice.call(images);
+			images.splice(-1, 1);
 		}
 	}
+
 	var sliderTrack = document.querySelector('.t-carousel__zoomer__track');
-	Array.prototype.forEach.call(images, function (img) {
+	var isLazy = window.lazy === 'y';
+	Array.prototype.forEach.call(images, function (img, i) {
 		var dataZoomAttr = img.getAttribute('data-img-zoom-url');
 		var imgTitle = '';
 		var imgDescr = '';
-		var titleBody = '';
-		var descrBody = '';
 		var imgURLs = dataZoomAttr ? dataZoomAttr.split(',') : '';
 		if (img.nodeName === 'IMG' || img.nodeName === 'DIV') {
 			imgTitle = img.getAttribute('title') || '';
 			imgDescr = img.getAttribute('data-img-zoom-descr') || '';
 		}
+
 		if (imgTitle) {
-			titleBody = '<div class="t-zoomer__title t-name t-descr_xxs">' + imgTitle + '</div>';
+			var slideTitle = document.createElement('div');
+			slideTitle.classList.add('t-zoomer__title');
+			slideTitle.classList.add('t-name');
+			slideTitle.classList.add('t-descr_xxs');
+			slideTitle.textContent = imgTitle;
 		}
 		if (imgDescr) {
-			descrBody = '<div class="t-zoomer__descr t-descr t-descr_xxs">' + imgDescr + '</div>';
+			var slideDescription = document.createElement('div');
+			slideDescription.classList.add('t-zoomer__descr');
+			slideDescription.classList.add('t-descr');
+			slideDescription.classList.add('t-descr_xxs');
+			slideDescription.textContent = imgDescr;
 		}
 
-		sliderTrack.insertAdjacentHTML('beforeend',
-			'<div class="t-carousel__zoomer__item">' +
-			'<div class="t-carousel__zoomer__wrapper">' +
-			'<img class="t-carousel__zoomer__img" src="' + imgURLs + '">' +
-			'</div>' +
-			'<div class="t-zoomer__comments">' + titleBody + descrBody + '</div>' +
-			'</div>');
+		var zoomerSlide = document.createElement('div');
+		zoomerSlide.classList.add('t-carousel__zoomer__item');
+		var zoomerWrapper = document.createElement('div');
+		zoomerWrapper.classList.add('t-carousel__zoomer__wrapper');
+		var slideIMG = document.createElement('img');
+		slideIMG.classList.add('t-carousel__zoomer__img');
+		if (isLazy) {
+			slideIMG.classList.add('t-img');
+			slideIMG.setAttribute('data-original', imgURLs);
+			// to smooth sliding between first and last slide, set src with original image
+			if (i === 0 || i === images.length - 1) slideIMG.src = imgURLs;
+		} else {
+			slideIMG.src = imgURLs;
+		}
+		zoomerSlide.appendChild(zoomerWrapper);
+		zoomerWrapper.appendChild(slideIMG);
+
+		// append .t-zoomer__comments in mobile to create an even grid of slides
+		if (imgTitle || imgDescr || window.t_zoom__isMobile) {
+			var slideComment = document.createElement('div');
+			slideComment.classList.add('t-zoomer__comments');
+			if (imgTitle) slideComment.appendChild(slideTitle);
+			if (imgDescr) slideComment.appendChild(slideDescription);
+			zoomerSlide.appendChild(slideComment);
+		}
+		sliderTrack.appendChild(zoomerSlide);
 	});
 }
 
+/**
+ * set style params and data-attributes (data-slide number, etc.) for created slides, and init slider
+ *
+ * @param {HTMLElement} targetElement - current element
+ */
 function t_zoom__createAndLoopSlider(targetElement) {
 	var sliderTrack = document.querySelector('.t-carousel__zoomer__track');
 	var modal = document.querySelector('.t-zoomer__wrapper');
 	var slideItems = document.querySelectorAll('.t-carousel__zoomer__item');
-	var maxCommentsHeight = 0;
+
 	if (modal && slideItems.length) {
-		var imageBordersWidth = modal.offsetHeight - slideItems.offsetHeight;
+		var imageBordersWidth = modal.offsetHeight - slideItems[0].offsetHeight;
 
+		// get max height of comments in all slides to set this height for all of them, for set an even grid of slider
+		var maxHeightOfComments = Array.prototype.reduce.call(
+			slideItems,
+			function (prev, slide) {
+				var comment = slide.querySelector('.t-zoomer__comments');
+				var commentHeight = comment ? comment.offsetHeight : 0;
+				if (commentHeight > prev) prev = commentHeight;
+				return prev;
+			},
+			0
+		);
+
+		var isLazy = window.lazy === 'y';
 		Array.prototype.forEach.call(slideItems, function (slideItem) {
+			var image = slideItem.querySelector('.t-carousel__zoomer__img');
+			var attributeName = isLazy ? 'data-original' : 'src';
+			var imageSrc = image.getAttribute(attributeName);
+			var comment = slideItem.querySelector('.t-zoomer__comments');
+			var commentHeight = comment ? comment.offsetHeight : 0;
+			if (window.t_zoom__isMobile) {
+				commentHeight = maxHeightOfComments;
+			}
 
-			var zoomerComments = slideItem.querySelectorAll('.t-zoomer__comments');
+			if (comment) comment.style.height = commentHeight + 'px';
+			image.style.maxHeight = document.documentElement.clientHeight - (commentHeight + imageBordersWidth) + 'px';
 
-			Array.prototype.forEach.call(zoomerComments, function (comment) {
-				var zoomerTitle = comment.querySelector('.t-zoomer__title');
-				var zoomerDescr = comment.querySelector('.t-zoomer__descr');
-				if (!zoomerTitle && !zoomerDescr) {
-					comment.style.padding = 0;
-				}
-				var commentHeight = comment.offsetHeight;
-				maxCommentsHeight = maxCommentsHeight > commentHeight ? maxCommentsHeight : commentHeight;
-				comment.style.height = maxCommentsHeight + 'px';
-			});
-
-			var zoomedImages = slideItem.querySelectorAll('.t-carousel__zoomer__img');
-			Array.prototype.forEach.call(zoomedImages, function (zoomedImg) {
-				zoomedImg.style.maxHeight = 'calc(100vh - ' + (maxCommentsHeight + imageBordersWidth) + 'px';
-				var ZoomedImgSrc = zoomedImg.getAttribute('src');
-				if (ZoomedImgSrc && ZoomedImgSrc.indexOf('.svg') !== -1) {
-					zoomedImg.style.width = window.innerWidth + 'px';
-				}
-			});
+			if (imageSrc && imageSrc.indexOf('.svg') !== -1) {
+				image.style.width = window.innerWidth + 'px';
+			}
 
 			var arrowWrappers = document.querySelectorAll('.t-carousel__zoomer__arrow__wrapper');
+
 			Array.prototype.forEach.call(arrowWrappers, function (arrowWrapper) {
-				arrowWrapper.style.top = 'calc(50% - ' + (maxCommentsHeight / 2) + 'px)';
+				arrowWrapper.style.top = commentHeight ? 'calc(50% - ' + commentHeight / 2 + 'px)' : '50%';
 			});
 		});
 
-		var targetURL = targetElement.getAttribute('data-img-zoom-url');
-		var targetImg = targetURL ? document.querySelector('.t-carousel__zoomer__img[src="' + targetURL + '"]') : false;
-		var carouselItem = targetImg ? targetImg.closest('.t-carousel__zoomer__item') : false;
 		Array.prototype.forEach.call(slideItems, function (slideItem, index) {
 			slideItem.setAttribute('data-zoomer-slide-number', index);
 		});
-		if (slideItems.length > 1) {
-			t_zoom_loopSlider();
-		}
-		var carouselPosLeft = carouselItem ? carouselItem.offsetLeft : false;
+
+		if (slideItems.length > 1) t_zoom_loopSlider();
+
+		var targetURL = targetElement.getAttribute('data-img-zoom-url');
+		var attributeName = isLazy ? 'data-original' : 'src';
+		var selector = '.t-carousel__zoomer__img[' + attributeName + '="' + targetURL + '"]';
+		var targetImg = targetURL ? document.querySelector(selector) : null;
+		var carouselItem = targetImg ? targetImg.closest('.t-carousel__zoomer__item') : null;
+
+		//set clicked slide active in zoomer slider
 		if (carouselItem) {
+			var carouselPosLeft = carouselItem ? carouselItem.offsetLeft : false;
 			carouselItem.classList.add('active');
 			sliderTrack.style.transition = 'none';
 			sliderTrack.style.transform = 'translateX(' + -carouselPosLeft + 'px)';
 			setTimeout(function () {
 				sliderTrack.style.transition = '';
-			});
+			}, 200);
 		}
+		if (isLazy) t_onFuncLoad('t_lazyload_update', t_lazyload_update);
 	}
 }
 
 /**
+ * change active slide
+ *
  * @param {string} direction - slider transition direction (return to current slide, if direction is not defined)
  */
 function t_zoom_showSlide(direction) {
@@ -469,29 +587,51 @@ function t_zoom_showSlide(direction) {
 	var slideItems = sliderTrack.querySelectorAll('.t-carousel__zoomer__item');
 	var targetItem = sliderTrack.querySelector('.t-carousel__zoomer__item.active');
 	var currentSlideIndex = 0;
+	var isClickFromZoomedImg = sliderTrack.getAttribute('data-cached-zoom') === 'y';
 	Array.prototype.forEach.call(slideItems, function (slideItem, index) {
 		if (slideItem === targetItem) {
 			currentSlideIndex = index;
 		}
 	});
-	switch (direction) {
-		case 'next':
-			currentSlideIndex = (currentSlideIndex + 1) % slideItems.length;
-			sliderTrack.setAttribute('data-on-transition', 'y');
-			break;
-		case 'prev':
-			currentSlideIndex = (slideItems.length + (currentSlideIndex - 1)) % slideItems.length;
-			sliderTrack.setAttribute('data-on-transition', 'y');
-			break;
+	if (direction === 'next' || direction === 'prev') {
+		var slideCount = direction === 'next' ? currentSlideIndex + 1 : slideItems.length + (currentSlideIndex - 1);
+		currentSlideIndex = slideCount % slideItems.length;
+		sliderTrack.setAttribute('data-on-transition', 'y');
+		// fix for mobile if it used after swipe events,
+		// which can be cache 0 transition before use
+		// prettier-ignore
+		if (window.t_zoom__isMobile && getComputedStyle(sliderTrack).transitionDuration === '0s' && !isClickFromZoomedImg) {
+			sliderTrack.style.transition = '';
+		}
 	}
 
 	var trackPosition = slideItems[currentSlideIndex].offsetLeft;
 	targetItem.classList.remove('active');
 	slideItems[currentSlideIndex].classList.add('active');
-	sliderTrack.style.transform = 'translateX(' + (-trackPosition) + 'px';
+	sliderTrack.style.transform = 'translateX(' + -trackPosition + 'px)';
+
+	// if slide changed from zoomed image, should trigger transitionend event,
+	// to prevent stuck slider
+	if (isClickFromZoomedImg) {
+		sliderTrack.removeAttribute('data-cached-zoom');
+		var transitionend = new Event('transitionend');
+		sliderTrack.dispatchEvent(transitionend);
+	}
+
+	if (window.lazy === 'y') {
+		t_onFuncLoad('t_lazyload_update', t_lazyload_update);
+		var activeImg = slideItems[currentSlideIndex].querySelector('img');
+		if (activeImg && !activeImg.src) {
+			setTimeout(function () {
+				t_onFuncLoad('t_lazyload_update', t_lazyload_update);
+			}, 200);
+		}
+	}
 }
 
 /**
+ * create loop for zoomer slider
+ *
  * @param {string} side of slider before loop ('start' or 'end')
  * @returns {number | void} number in case of side is false via Boolean convert
  */
@@ -526,6 +666,7 @@ function t_zoom_transitForLoop(side) {
 
 	setTimeout(function () {
 		sliderTrack.style.transition = '';
+		if (window.lazy === 'y') t_onFuncLoad('t_lazyload_update', t_lazyload_update);
 	});
 }
 
@@ -549,7 +690,7 @@ function t_zoom_loopSlider() {
 
 	var events = ['transitionend', 'webkitTransitionEnd', 'oTransitionEnd'];
 
-	Array.prototype.forEach.call(events, function (event) {
+	events.forEach(function (event) {
 		sliderTrack.addEventListener(event, function () {
 			var currentSlideIndex = 0;
 			Array.prototype.forEach.call(sliderItems, function (sliderItem, index) {
@@ -599,10 +740,12 @@ function t_zoom_initCloseSwipe() {
 	hammer.on('panmove', function (event) {
 		var deltaY = Math.abs(event.deltaY);
 
-		if ((sliderTrack.getAttribute('data-on-drag') !== 'y' || modal.getAttribute('data-on-drag') === 'y') &&
+		if (
+			(sliderTrack.getAttribute('data-on-drag') !== 'y' || modal.getAttribute('data-on-drag') === 'y') &&
 			((event.angle > -120 && event.angle < -60) || (event.angle < 120 && event.angle > 60)) &&
 			event.maxPointers === 1 &&
-			!isScaled) {
+			!isScaled
+		) {
 			if (deltaY > 40) {
 				modal.setAttribute('data-on-drag', 'y');
 			}
@@ -626,9 +769,7 @@ function t_zoom_closeSwipeHandler(event) {
 		modal.style.transform = '';
 	}
 
-	if (modal.getAttribute('data-on-drag') === 'y' &&
-		event.maxPointers === 1 &&
-		!isScaled) {
+	if (modal.getAttribute('data-on-drag') === 'y' && event.maxPointers === 1 && !isScaled) {
 		if (event.deltaY < -200 || event.velocityY < -0.3) {
 			modal.style.transform = 'translateY(-100vh)';
 
@@ -636,7 +777,6 @@ function t_zoom_closeSwipeHandler(event) {
 				t_zoom_close();
 				modal.style.transform = '';
 			}, closeAnimationTime);
-
 		} else if (event.deltaY > 200 || event.velocityY > 0.3) {
 			modal.style.transform = 'translateY(100vh)';
 
@@ -644,7 +784,6 @@ function t_zoom_closeSwipeHandler(event) {
 				t_zoom_close();
 				modal.style.transform = '';
 			}, closeAnimationTime);
-
 		} else {
 			modal.style.transform = '';
 		}
@@ -652,35 +791,114 @@ function t_zoom_closeSwipeHandler(event) {
 	modal.setAttribute('data-on-drag', '');
 }
 
-
+/**
+ * if zoomed image has naturalHeight/Width larger than viewport width/height,
+ * we can scale this image
+ */
 function t_zoom_checkForScale() {
-	var eventAdded = false;
 	var zoomedImage = document.querySelector('.t-carousel__zoomer__item.active .t-carousel__zoomer__img:not(.loaded)');
-	var windowWidth = window.innerWidth;
-	var windowHeight = window.innerHeight;
-
 	if (!zoomedImage) return;
 
-	zoomedImage.onload = function () {
-		if (eventAdded) return;
-		if (windowHeight < zoomedImage.naturalHeight || windowWidth < zoomedImage.naturalWidth) {
-			zoomedImage.classList.add('loaded');
-			if (!window.isDoubletapScaleAdded) t_zoom_doubletapScaleInit();
-			t_zoom_scale_init();
-			return;
-		}
-	};
-
-	if (zoomedImage.complete && !eventAdded) {
-		eventAdded = true;
-		if (windowHeight < zoomedImage.naturalHeight || windowWidth < zoomedImage.naturalWidth) {
-			if (!window.isDoubletapScaleAdded) t_zoom_doubletapScaleInit();
-			t_zoom_scale_init();
-			return;
-		} else {
-			document.querySelector('.t-zoomer__scale').style.display = '';
-		}
+	var allRecords = document.getElementById('allrecords');
+	var isLazyActive = allRecords ? allRecords.getAttribute('data-tilda-lazy') === 'yes' : false;
+	if (window.lazy === 'y' || isLazyActive) {
+		var timer = Date.now();
+		t_zoom__waitImgForScale(zoomedImage, timer, function () {
+			t_zoom_checkToScaleInit(zoomedImage);
+		});
+	} else if (zoomedImage.complete) {
+		t_zoom_checkToScaleInit(zoomedImage);
+	} else {
+		zoomedImage.onload = function () {
+			t_zoom_checkToScaleInit(zoomedImage);
+		};
 	}
+}
+
+/**
+ * wait for zoomed image to contain src, natural width and height
+ *
+ * @param {HTMLImageElement} zoomedImage
+ * @param {number} timer - Date.now()
+ * @param {function} callback
+ */
+function t_zoom__waitImgForScale(zoomedImage, timer, callback) {
+	if (zoomedImage.src && zoomedImage.naturalWidth && zoomedImage.naturalHeight) {
+		callback();
+		// wait no more than 3 seconds
+	} else if (Date.now() - timer < 3000) {
+		setTimeout(function () {
+			t_zoom__waitImgForScale(zoomedImage, timer, callback);
+		}, 500);
+	} else {
+		console.warn(
+			"zoomed image isn't complete, natural width: " +
+				zoomedImage.naturalWidth +
+				', natural height: ' +
+				zoomedImage.naturalHeight
+		);
+		callback();
+	}
+}
+
+/**
+ * we cannot check original size of svg, and then we should check, is img has .svg format,
+ * and if yes, fetch original <svg> to get original height and width
+ *
+ * @param {HTMLImageElement} zoomedImage - current zoomed image
+ */
+function t_zoom_checkToScaleInit(zoomedImage) {
+	var windowWidth = window.innerWidth;
+	var windowHeight = window.innerHeight;
+	var zoomerWrapper = document.querySelector('.t-zoomer__wrapper');
+	zoomerWrapper.classList.remove('zoomer-no-scale');
+	//prettier-ignore
+	var hasOriginalSvgParams = zoomedImage.hasAttribute('data-original-svg-height') || zoomedImage.hasAttribute('data-original-svg-width');
+
+	if (zoomedImage.src.indexOf('.svg') !== -1 && !window.isIE && !hasOriginalSvgParams) {
+		t_zoom_fetchSVG(zoomedImage, windowHeight, windowWidth);
+	} else if (windowHeight < zoomedImage.naturalHeight || windowWidth < zoomedImage.naturalWidth) {
+		//prettier-ignore
+		if (!window.isDoubletapScaleAdded && (window.t_zoom__isMobile || 'ontouchend' in document)) t_zoom_doubletapScaleInit();
+		t_zoom_scale_init();
+	} else {
+		document.querySelector('.t-zoomer__scale').style.display = '';
+		zoomerWrapper.classList.add('zoomer-no-scale');
+	}
+}
+
+/**
+ * get <svg> to check it real size
+ *
+ * @param {HTMLImageElement} zoomedImage - current image
+ * @param {number} windowHeight
+ * @param {number} windowWidth
+ */
+function t_zoom_fetchSVG(zoomedImage, windowHeight, windowWidth) {
+	var url = zoomedImage.src;
+	fetch(url)
+		.then(function (response) {
+			return response.text();
+		})
+		.then(function (svg) {
+			var div = document.createElement('div');
+			document.body.insertAdjacentElement('beforeend', div);
+			div.innerHTML = svg;
+			var parsedSVG = div.querySelector('svg');
+			zoomedImage.setAttribute('data-original-svg-height', parsedSVG.getBBox().height.toString());
+			zoomedImage.setAttribute('data-original-svg-width', parsedSVG.getBBox().width.toString());
+			zoomedImage.style.width = parsedSVG.getBBox().width + 'px';
+			zoomedImage.style.height = parsedSVG.getBBox().height + 'px';
+
+			if (windowHeight < parsedSVG.getBBox().height || windowWidth < parsedSVG.getBBox().width) {
+				if (!window.isDoubletapScaleAdded && (window.t_zoom__isMobile || 'ontouchend' in document))
+					t_zoom_doubletapScaleInit();
+				t_zoom_scale_init();
+			} else {
+				document.querySelector('.t-zoomer__scale').style.display = '';
+			}
+			document.body.removeChild(div);
+		});
 }
 
 /**
@@ -692,12 +910,19 @@ function t_zoom_scale_init() {
 	zoomerScale.style.display = 'block';
 	if (zoomerScale.getAttribute('data-zoom-scale-init') !== 'y') {
 		zoomerScale.setAttribute('data-zoom-scale-init', 'y');
-		zoomerWrapper.addEventListener('click', function (e) {
-			var zoomedImage = document.querySelector('.t-carousel__zoomer__item.active .t-carousel__zoomer__img');
-			var zoomerTrack = document.querySelector('.t-carousel__zoomer__track');
-			var zoomerInner = document.querySelector('.t-carousel__zoomer__inner');
-			for (var target = e.target; target && target != this; target = target.parentNode) {
-				if (target === zoomerScale) {
+		zoomerWrapper.addEventListener(
+			'click',
+			function (e) {
+				var zoomedImage = document.querySelector('.t-carousel__zoomer__item.active .t-carousel__zoomer__img');
+				var zoomerTrack = document.querySelector('.t-carousel__zoomer__track');
+				var zoomerInner = document.querySelector('.t-carousel__zoomer__inner');
+				var noScaleCurrentIMG = !zoomerWrapper.classList.contains('zoomer-no-scale');
+				if (
+					(window.t_zoom__isMobile && e.target.closest('.t-zoomer__scale') && noScaleCurrentIMG) ||
+					(!window.t_zoom__isMobile &&
+						noScaleCurrentIMG &&
+						!e.target.closest('.t-zoomer__close, .t-carousel__zoomer__control'))
+				) {
 					zoomerTrack.setAttribute('data-on-transition', '');
 					zoomerTrack.style.transition = 'none';
 					zoomerTrack.style.transform = 'none';
@@ -707,19 +932,22 @@ function t_zoom_scale_init() {
 					} else {
 						zoomerWrapper.classList.add('scale-active');
 						zoomerInner.classList.add('scale-active');
-						if (window.isMobile) {
+						if (window.t_zoom__isMobile) {
 							t_zoom_mobileZoomPositioningInit(zoomedImage);
 						} else {
 							t_zoom_desktopZoomPositioningInit(zoomedImage, e);
 						}
 					}
-					break;
 				}
-			}
-		}, false);
+			},
+			false
+		);
 	}
 }
 
+/**
+ * for mobile devices scale/unscale image by double tap
+ */
 function t_zoom_doubletapScaleInit() {
 	window.isDoubletapScaleAdded = true;
 	var zoomerWrapper = document.querySelector('.t-zoomer__wrapper');
@@ -729,18 +957,15 @@ function t_zoom_doubletapScaleInit() {
 		cssProps: {
 			touchCollout: 'default',
 		},
-		recognizers: [
-			[
-				Hammer.Tap,
-			],
-		],
+		recognizers: [[Hammer.Tap]],
 	});
 
 	hammer.on('tap', function (e) {
-		if (e.tapCount === 2 &&
+		if (
+			e.tapCount === 2 &&
 			document.body.classList.contains('t-zoomer__show') &&
-			!e.target.closest('.t-carousel__zoomer__control')) {
-
+			!e.target.closest('.t-carousel__zoomer__control')
+		) {
 			var zoomedImage = document.querySelector('.t-carousel__zoomer__item.active .t-carousel__zoomer__img');
 			var zoomerInner = document.querySelector('.t-carousel__zoomer__inner');
 			var zoomerTrack = document.querySelector('.t-carousel__zoomer__track');
@@ -760,11 +985,11 @@ function t_zoom_doubletapScaleInit() {
 	});
 }
 
-
 /**
- * check that the img natural params largest then window width / height or both
- * @param {HTMLElement} zoomedImage - current image
- * @param {Event} event - on click zoomerScale (.t-zoomer__scale)
+ * check that the img natural params the largest then window width / height or both
+ *
+ * @param {HTMLImageElement} zoomedImage - current image
+ * @param {MouseEvent} event - on click zoomerScale (.t-zoomer__scale)
  */
 function t_zoom_desktopZoomPositioningInit(zoomedImage, event) {
 	var leftCoord = (window.innerWidth - zoomedImage.offsetWidth) / 2;
@@ -774,19 +999,22 @@ function t_zoom_desktopZoomPositioningInit(zoomedImage, event) {
 	var clientXpercent;
 	var imageXpx;
 
+	var naturalWidth = zoomedImage.getAttribute('data-original-svg-width') || zoomedImage.naturalWidth;
+	var naturalHeight = zoomedImage.getAttribute('data-original-svg-height') || zoomedImage.naturalHeight;
+
 	zoomedImage.style.left = leftCoord + 'px';
 	zoomedImage.style.top = topCoord + 'px';
 
-	if (window.innerWidth < zoomedImage.naturalWidth && window.innerHeight < zoomedImage.naturalHeight) {
+	if (window.innerWidth < naturalWidth && window.innerHeight < naturalHeight) {
 		clientXpercent = (event.clientX * 100) / window.innerWidth;
-		imageXpx = -(clientXpercent * (zoomedImage.offsetWidth - window.innerWidth)) / 100;
+		imageXpx = -(clientXpercent * (naturalWidth - window.innerWidth)) / 100;
 		clientYpercent = (event.clientY * 100) / window.innerHeight;
-		imageYpx = -(clientYpercent * (zoomedImage.offsetHeight - window.innerHeight)) / 100;
+		imageYpx = -(clientYpercent * (naturalHeight - window.innerHeight)) / 100;
 
 		zoomedImage.style.left = imageXpx + 'px';
 		zoomedImage.style.top = imageYpx + 'px';
 
-		if (window.isMobile) {
+		if (window.t_zoom__isMobile) {
 			zoomedImage.ontouchmove = function (e) {
 				imageMoveWidth(e, zoomedImage);
 				imageMoveHeight(e, zoomedImage);
@@ -797,14 +1025,13 @@ function t_zoom_desktopZoomPositioningInit(zoomedImage, event) {
 				imageMoveHeight(e, zoomedImage);
 			};
 		}
-
-	} else if (window.innerWidth < zoomedImage.naturalWidth) {
+	} else if (window.innerWidth < naturalWidth) {
 		clientXpercent = (event.clientX * 100) / window.innerWidth;
-		imageXpx = -(clientXpercent * (zoomedImage.offsetWidth - window.innerWidth)) / 100;
+		imageXpx = -(clientXpercent * (naturalWidth - window.innerWidth)) / 100;
 
 		zoomedImage.style.left = imageXpx + 'px';
 
-		if (window.isMobile) {
+		if (window.t_zoom__isMobile) {
 			zoomedImage.ontouchmove = function (e) {
 				imageMoveWidth(e, zoomedImage);
 			};
@@ -813,14 +1040,13 @@ function t_zoom_desktopZoomPositioningInit(zoomedImage, event) {
 				imageMoveWidth(e, zoomedImage);
 			};
 		}
-
-	} else if (window.innerHeight < zoomedImage.naturalHeight) {
+	} else if (window.innerHeight < naturalHeight) {
 		clientYpercent = (event.clientY * 100) / window.innerHeight;
-		imageYpx = -(clientYpercent * (zoomedImage.offsetHeight - window.innerHeight)) / 100;
+		imageYpx = -(clientYpercent * (naturalHeight - window.innerHeight)) / 100;
 
 		zoomedImage.style.top = imageYpx + 'px';
 
-		if (window.isMobile) {
+		if (window.t_zoom__isMobile) {
 			zoomedImage.ontouchmove = function (e) {
 				imageMoveHeight(e, zoomedImage);
 			};
@@ -829,23 +1055,23 @@ function t_zoom_desktopZoomPositioningInit(zoomedImage, event) {
 				imageMoveHeight(e, zoomedImage);
 			};
 		}
-
 	}
 
 	function imageMoveWidth(e, img) {
-		clientXpercent = (e.touches !== undefined ? e.touches[0].clientX : e.clientX) * 100 / window.innerWidth;
+		clientXpercent = ((e.touches !== undefined ? e.touches[0].clientX : e.clientX) * 100) / window.innerWidth;
 		imageXpx = -(clientXpercent * (img.offsetWidth - window.innerWidth)) / 100;
 		img.style.left = imageXpx + 'px';
 	}
+
 	function imageMoveHeight(e, img) {
-		clientYpercent = (e.touches !== undefined ? e.touches[0].clientY : e.clientY) * 100 / window.innerHeight;
+		clientYpercent = ((e.touches !== undefined ? e.touches[0].clientY : e.clientY) * 100) / window.innerHeight;
 		imageYpx = -(clientYpercent * (img.offsetHeight - window.innerHeight)) / 100;
 		img.style.top = imageYpx + 'px';
 	}
 }
 
 /**
- * @param {HTMLElement} zoomedImage 
+ * @param {HTMLElement} zoomedImage
  */
 function t_zoom_mobileZoomPositioningInit(zoomedImage) {
 	var leftCoordinate = (window.innerWidth - zoomedImage.offsetWidth) / 2;
@@ -889,6 +1115,7 @@ function t_zoom_mobileZoomPositioningInit(zoomedImage) {
 		if (currentTranslate.y < topCoordinate) {
 			currentTranslate.y = topCoordinate;
 		}
+		if (zoomedImage.offsetHeight < window.innerHeight) currentTranslate.y = 0;
 		zoomedImage.style.transform = 'translate(' + currentTranslate.x + 'px, ' + currentTranslate.y + 'px)';
 	};
 	zoomedImage.ontouchend = function () {
@@ -911,7 +1138,12 @@ function t_zoom_getTouchEventXY(event) {
 		y: 0,
 	};
 
-	if (event.type == 'touchstart' || event.type == 'touchmove' || event.type == 'touchend' || event.type == 'touchcancel') {
+	if (
+		event.type === 'touchstart' ||
+		event.type === 'touchmove' ||
+		event.type === 'touchend' ||
+		event.type === 'touchcancel'
+	) {
 		var touch = event.touches[0] || event.changedTouches[0];
 
 		coordinates.x = touch.pageX;
@@ -923,13 +1155,23 @@ function t_zoom_getTouchEventXY(event) {
 
 function t_zoom_close() {
 	t_zoom_unscale();
-	document.body.classList.remove('t-zoomer__show', 't-zoomer__show_fixed');
-	document.onkeydown = null;
+	document.body.classList.remove('t-zoomer__show');
+	document.body.classList.remove('t-zoomer__show_fixed');
+	var zoomContainer = document.querySelector('.t-zoomer__container');
+	if (zoomContainer) zoomContainer.innerHTML = '';
+	setTimeout(function () {
+		document.body.classList.remove('t-zoomer__active');
+	}, 200);
 	t_zoom_unlockScroll();
 }
 
+/**
+ * unscale zoomed image
+ */
 function t_zoom_unscale() {
-	var scaledZoomerWrappers = document.querySelectorAll('.t-zoomer__wrapper.scale-active, .t-carousel__zoomer__inner');
+	// prettier-ignore
+	var scaledZoomerWrappers = document.querySelectorAll('.t-zoomer__wrapper.scale-active, .t-carousel__zoomer__inner.scale-active');
+
 	Array.prototype.forEach.call(scaledZoomerWrappers, function (wrapper) {
 		wrapper.classList.remove('scale-active');
 	});
@@ -937,112 +1179,101 @@ function t_zoom_unscale() {
 	var zoomedItem = document.querySelector('.t-carousel__zoomer__item.active');
 	var zoomerTrack = document.querySelector('.t-carousel__zoomer__track');
 	var modal = document.querySelector('.t-zoomer__wrapper');
+
 	if (zoomedItem) {
-		var zoomedImages = document.querySelectorAll('.t-carousel__zoomer__img');
-		var zoomerComments = zoomedItem.querySelector('.t-zoomer__comments');
-		if (zoomerComments && modal) {
-			Array.prototype.forEach.call(zoomedImages, function (zoomedImage) {
-				var imageBordersWidth = modal.offsetHeight - zoomedItem.offsetHeight;
-				var height = zoomerComments.offsetHeight;
-				zoomedImage.onmousemove = null;
-				zoomedImage.ontouchmove = null;
-				zoomedImage.style.transform = '';
-				zoomedImage.style.left = '';
-				zoomedImage.style.top = '';
-				zoomedImage.style.maxHeight = 'calc(100vh - ' + (imageBordersWidth + height) + 'px)';
-			});
+		var image = zoomedItem.querySelector('.t-carousel__zoomer__img');
+		var comment = zoomedItem.querySelector('.t-zoomer__comments');
+
+		if (modal) {
+			var imageBordersWidth = modal.offsetHeight - zoomedItem.offsetHeight;
+			var height = comment ? comment.offsetHeight : 0;
+
+			image.onmousemove = null;
+			image.ontouchmove = null;
+			image.style.transform = '';
+			image.style.left = '';
+			image.style.top = '';
+			image.style.maxHeight = 'calc(100vh - ' + (imageBordersWidth + height) + 'px)';
 		}
 	}
 
+	// return slider current position of active slide
 	if (zoomedItem.offsetLeft !== undefined && zoomedItem.offsetTop !== undefined) {
 		var trackPosition = zoomedItem.offsetLeft;
 		zoomerTrack.style.transform = 'translateX(' + -trackPosition + 'px)';
 	}
 
+	if (scaledZoomerWrappers.length) zoomerTrack.setAttribute('data-cached-zoom', 'y');
+
+	// remove transition to prevent visible return to active slide
 	setTimeout(function () {
 		zoomerTrack.style.transition = '';
-	});
+	}, 100);
 }
 
+/**
+ * lock scroll for iOS11 or Android devices
+ */
 function t_zoom_lockScroll() {
 	var isAndroid = /(android)/i.test(navigator.userAgent);
-	if ((window.isiOS && !window.MSStream) || isAndroid) {
-		if ((window.isiOSVersion && window.isiOSVersion) || isAndroid) {
-			if (window.isiOSVersion[0] === 11 || isAndroid) {
-				if (!document.body.classList.contains('t-body_scroll-locked')) {
-					var bodyScrollTop =
-						typeof window.pageYOffset !== 'undefined' ?
-							window.pageYOffset :
-							(
-								document.documentElement ||
-								document.body.parentNode ||
-								document.body
-							).scrollTop;
-					document.body.classList.add('t-body_scroll-locked');
-					document.body.style.top = '-' + bodyScrollTop + 'px';
-					document.body.setAttribute('data-popup-scrolltop', bodyScrollTop);
-				}
-			}
-		}
+	var isiOS11 = window.t_zoom__isiOS && window.t_zoom__iOSMajorVersion === 11 && !window.MSStream;
+	if ((isiOS11 || isAndroid) && !document.body.classList.contains('t-body_scroll-locked')) {
+		var bodyScrollTop = window.pageYOffset;
+		document.body.classList.add('t-body_scroll-locked');
+		document.body.style.top = '-' + bodyScrollTop + 'px';
+		document.body.setAttribute('data-popup-scrolltop', bodyScrollTop.toString());
 	}
 }
 
+/**
+ * unlock scroll for iOS11 or Android devices
+ */
 function t_zoom_unlockScroll() {
 	var isAndroid = /(android)/i.test(navigator.userAgent);
-	if ((window.isiOS && !window.MSStream) || isAndroid) {
-		if ((window.isiOSVersion && window.isiOSVersion) || isAndroid) {
-			if (window.isiOSVersion[0] === 11 || isAndroid) {
-				if (document.body.classList.contains('t-body_scroll-locked')) {
-					var bodyScrollTop = document.body.getAttribute('data-popup-scrolltop');
-					document.body.classList.remove('t-body_scroll-locked');
-					document.body.style.top = '';
-					document.body.removeAttribute('data-popup-scrolltop');
-					window.scrollTo(0, bodyScrollTop);
-				}
-			}
-		}
+	var isiOS11 = window.t_zoom__isiOS && window.t_zoom__iOSMajorVersion === 11 && !window.MSStream;
+	if ((isiOS11 || isAndroid) && document.body.classList.contains('t-body_scroll-locked')) {
+		var bodyScrollTop = document.body.getAttribute('data-popup-scrolltop');
+		document.body.classList.remove('t-body_scroll-locked');
+		document.body.style.top = '';
+		document.body.removeAttribute('data-popup-scrolltop');
+		window.scrollTo(0, Number(bodyScrollTop));
 	}
 }
 
 function t_zoom_initResizeListener() {
-	var debouncedResizeHandler = t_throttle(t_zoom_resizeHandler, 300);
+	var debouncedResizeHandler = t_throttle(function () {
+		t_zoom_resizeHandler();
+	});
 	window.addEventListener('resize', debouncedResizeHandler);
 }
 
 function t_zoom_resizeHandler() {
 	var sliderTrack = document.querySelector('.t-carousel__zoomer__track');
+	if (!sliderTrack) return;
 	var activeSlidePosition = sliderTrack.querySelector('.t-carousel__zoomer__item.active').offsetLeft;
 	sliderTrack.style.transform = 'translateX(' + -activeSlidePosition + 'px)';
 }
 
-function t_zoom_onFuncLoad(funcName, okFunc, time) {
-	if (typeof window[funcName] === 'function') {
-		okFunc();
-	} else {
-		setTimeout(function checkFuncExist() {
-			if (typeof window[funcName] === 'function') {
-				okFunc();
-				return;
-			}
-			if (document.readyState === 'complete' && typeof window[funcName] !== 'function') {
-				throw new Error(funcName + ' is undefined');
-			}
-			setTimeout(checkFuncExist, time || 100);
-		});
-	}
-}
-
 /**
+ * set bg color for modal and elements inside,
+ * for example if it is dark, set dark bg, and white color for text and controls
+ *
  * @param {HTMLElement} parent - block from which modal was called
  */
 function t_zoom_setModalColor(parent) {
-	var COLOR_WHITE = '#ffffff';
-	var COLOR_BLACK = '#000000';
+	var whiteColor = '#ffffff';
+	var blackColor = '#000000';
 	var bgColor = parent.getAttribute('data-bg-color');
 
-	var parentBGColor = bgColor ? bgColor : COLOR_WHITE;
-
+	var parentBGColor = bgColor ? bgColor : whiteColor;
 	parentBGColor = t_zoom_hexToRgb(parentBGColor);
+
+	var isSnippet =
+		document.getElementById('allrecords') !== document.querySelector('.t-store__product-snippet') &&
+		document.getElementById('allrecords').contains(document.querySelector('.t-store__product-snippet'));
+	if (isSnippet && parent) {
+		parentBGColor = parent.style.backgroundColor;
+	}
 
 	var modalContainer = document.querySelector('.t-zoomer__container');
 	var modalSvg = document.querySelectorAll('.t-zoomer__wrapper svg');
@@ -1052,17 +1283,17 @@ function t_zoom_setModalColor(parent) {
 	var controlsBGColor;
 	var titleAndDescr = document.querySelectorAll('.t-zoomer__title, .t-zoomer__descr');
 
-	var modalBGColor = t_zoom_luma_rgb(parentBGColor) === 'black' ? COLOR_BLACK : COLOR_WHITE;
+	var modalBGColor = t_zoom_luma_rgb(parentBGColor) === 'black' ? blackColor : whiteColor;
 
-	if (modalBGColor === COLOR_BLACK) {
-		modalTextColor = COLOR_WHITE;
+	if (modalBGColor === blackColor) {
+		modalTextColor = whiteColor;
 		controlsBGColor = 'rgba(1, 1, 1, 0.3)';
 
 		Array.prototype.forEach.call(arrowsWrapper, function (arrow) {
 			arrow.classList.add('t-carousel__zoomer__arrow__wrapper_dark');
 		});
 	} else {
-		modalTextColor = COLOR_BLACK;
+		modalTextColor = blackColor;
 		controlsBGColor = 'rgba(255, 255, 255, 0.3)';
 
 		Array.prototype.forEach.call(arrowsWrapper, function (arrow) {
@@ -1103,7 +1334,7 @@ function t_zoom_setModalColor(parent) {
 
 /**
  * @param {string | Array} color in rgb format
- * @returns {string} (black | white) depending of illumination of the passed
+ * @returns {string} (black | white) depending on illumination of the passed
  */
 function t_zoom_luma_rgb(color) {
 	var isArray = Array.isArray(color);
@@ -1121,10 +1352,12 @@ function t_zoom_luma_rgb(color) {
 		return 'black';
 	}
 
-	return ((0.2126 * rgb[0]) + (0.7152 * rgb[1]) + (0.0722 * rgb[2])) < 128 ? 'black' : 'white';
+	return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] < 128 ? 'black' : 'white';
 }
 
 /**
+ * transform from HEX to RGB
+ *
  * @param {string} hex - color in hex format
  * @returns {Array} - color in RGB format
  */
@@ -1136,14 +1369,19 @@ function t_zoom_hexToRgb(hex) {
 	});
 
 	var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-	var aaa = result ? {
-		r: parseInt(result[1], 16),
-		g: parseInt(result[2], 16),
-		b: parseInt(result[3], 16)
-	} : null;
-	return result ? [aaa.r, aaa.g, aaa.b] : null;
+	var colorModel = result
+		? {
+				r: parseInt(result[1], 16),
+				g: parseInt(result[2], 16),
+				b: parseInt(result[3], 16),
+		  }
+		: null;
+	return result ? [colorModel.r, colorModel.g, colorModel.b] : null;
 }
 
+/**
+ * hide controls at idle time
+ */
 function t_zoom_setHideControlsTimer() {
 	var controls = document.querySelectorAll('.t-carousel__zoomer__arrow__wrapper, .t-zoomer__scale');
 	Array.prototype.forEach.call(controls, function (control) {
