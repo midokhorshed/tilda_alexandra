@@ -5,19 +5,21 @@ window.t396__isMobile =
 
 // eslint-disable-next-line no-unused-vars
 function t396_init(recid) {
-	var data = '';
-	var resolution = t396_detectResolution();
-	var allRecords = document.getElementById('allrecords');
 	var record = document.getElementById('rec' + recid);
 	var zeroBlock = record ? record.querySelector('.t396') : null;
 	var artBoard = record ? record.querySelector('.t396__artboard') : null;
 
+	t396_initTNobj(recid, artBoard);
+
+	var data = '';
+	var resolution = t396_detectResolution(recid);
+	var allRecords = document.getElementById('allrecords');
+
 	window.tn_window_width = document.documentElement.clientWidth;
 	window.tn_scale_factor = parseFloat((window.tn_window_width / resolution).toFixed(3));
 
-	t396_initTNobj();
-	t396_switchResolution(resolution);
-	t396_updateTNobj();
+	t396_switchResolution(recid, resolution);
+	t396_updateTNobj(recid);
 	t396_artboard_build(data, recid);
 
 	/*check is device has touchscreen*/
@@ -146,7 +148,7 @@ function t396_doResize(recid) {
 	var isOnlyScalable = t396_isOnlyScalableBrowser();
 	var record = document.getElementById('rec' + recid);
 	var allRecords = document.getElementById('allrecords');
-	var resolution = t396_detectResolution();
+	var resolution = t396_detectResolution(recid);
 	var scaleStyle = record ? record.querySelector('.t396__scale-style') : null;
 	t396_removeElementFromDOM(scaleStyle);
 	if (!isOnlyScalable) {
@@ -167,11 +169,11 @@ function t396_doResize(recid) {
 	}
 	var artBoard = record ? record.querySelector('.t396__artboard') : null;
 	var artBoardWidth = artBoard ? artBoard.clientWidth : 0;
-	window.tn_window_width = window.t396__isMobile ? document.documentElement.clientWidth : window.innerWidth;
-	window.tn_scale_factor = Math.round((window.tn_window_width / resolution) * 100) / 100;
+	window.tn_window_width = document.documentElement.clientWidth;
+	window.tn_scale_factor = parseFloat((window.tn_window_width / resolution).toFixed(3));
 	window.tn_scale_offset = (artBoardWidth * window.tn_scale_factor - artBoardWidth) / 2;
-	t396_switchResolution(resolution);
-	t396_updateTNobj();
+	t396_switchResolution(recid, resolution);
+	t396_updateTNobj(recid);
 	t396_ab__renderView(artBoard);
 	var tildaMode = allRecords ? allRecords.getAttribute('data-tilda-mode') : '';
 	var isScaled = t396_ab__getFieldValue(artBoard, 'upscale') === 'window';
@@ -183,24 +185,25 @@ function t396_doResize(recid) {
 	t396_allelems__renderView(artBoard);
 }
 
-function t396_detectResolution() {
+function t396_detectResolution(recid) {
+	var artBoardId = 'ab' + recid;
 	var windowWidth = window.t396__isMobile ? document.documentElement.clientWidth : window.innerWidth;
-	var resolution = 1200;
-	var breakpoints = [1200, 960, 640, 480, 320];
+	var resolution;
 
-	for (var i = 0; i < breakpoints.length - 1; i++) {
-		if (windowWidth < breakpoints[i]) {
-			resolution = breakpoints[i + 1];
-		}
-	}
+	window.tn[artBoardId].screens.forEach(function (screen) {
+		if (windowWidth > screen) resolution = screen;
+	});
+
 	return resolution;
 }
 
-function t396_initTNobj() {
+function t396_initTNobj(recid, artBoard) {
+	if (!artBoard) return;
 	tn_console('func: initTNobj');
+	var artBoardId = 'ab' + recid;
+
+	/* Заводим глобальный объект и добавляем туда общие данные */
 	window.tn = {};
-	window.tn.canvas_min_sizes = ['320', '480', '640', '960', '1200'];
-	window.tn.canvas_max_sizes = ['480', '640', '960', '1200', ''];
 	window.tn.ab_fields = [
 		'height',
 		'width',
@@ -215,35 +218,51 @@ function t396_initTNobj() {
 		'height_vh',
 		'valign',
 	];
+
+	/* Заводим для конкретного artboard свой объект и записываем туда уникальные данные */
+	window.tn[artBoardId] = {};
+	window.tn[artBoardId].screens = [];
+
+	var screens = artBoard.getAttribute('data-artboard-screens');
+	if (!screens) {
+		/* Если пользователь не менял дефолтные разрешения */
+		window.tn[artBoardId].screens = [320, 480, 640, 960, 1200];
+	} else {
+		/* Если пользовательские настройки есть, то создаём корректный массив */
+		screens = screens.split(',');
+		screens.forEach(function (screen) {
+			screen = parseInt(screen, 10);
+			window.tn[artBoardId].screens.push(screen);
+		});
+	}
 }
 
-function t396_updateTNobj() {
+function t396_updateTNobj(recid) {
 	tn_console('func: updateTNobj');
+	var artBoardId = 'ab' + recid;
 	var allRecords = document.getElementById('allrecords');
 	var allRecPaddingLeft = allRecords ? window.getComputedStyle(allRecords).paddingLeft || '0' : '0';
 	allRecPaddingLeft = parseInt(allRecPaddingLeft, 10);
 	var allRecPaddingRight = allRecords ? window.getComputedStyle(allRecords).paddingRight || '0' : '0';
 	allRecPaddingRight = parseInt(allRecPaddingRight, 10);
+
 	if (window.zero_window_width_hook && window.zero_window_width_hook === 'allrecords' && allRecords) {
 		window.tn.window_width = allRecords.clientWidth - (allRecPaddingLeft + allRecPaddingRight);
 	} else {
 		window.tn.window_width = document.documentElement.clientWidth;
 	}
+
 	window.tn.window_height = window.t396__isMobile ? document.documentElement.clientHeight : window.innerHeight;
+	var screensReverse = window.tn[artBoardId].screens.slice().reverse();
 
-	window.tn.curResolution;
-
-	var breakpoints = [1200, 960, 640, 480, 320];
-
-	for (var i = 0; i < breakpoints.length; i++) {
-		if (+window.tn.curResolution === breakpoints[i]) {
-			window.tn.canvas_min_width = breakpoints[i];
-			window.tn.canvas_max_width = i === 0 ? window.tn.window_width : breakpoints[i - 1];
-		}
+	for (var i = 0; i < screensReverse.length; i++) {
+		if (window.tn[artBoardId].curResolution !== screensReverse[i]) continue;
+		window.tn[artBoardId].canvas_min_width = screensReverse[i];
+		window.tn[artBoardId].canvas_max_width = i === 0 ? window.tn.window_width : screensReverse[i - 1];
 	}
 
-	window.tn.grid_width = window.tn.canvas_min_width;
-	window.tn.grid_offset_left = (window.tn.window_width - window.tn.grid_width) / 2;
+	window.tn[artBoardId].grid_width = window.tn[artBoardId].canvas_min_width;
+	window.tn[artBoardId].grid_offset_left = (window.tn.window_width - window.tn[artBoardId].grid_width) / 2;
 }
 
 var t396_waitForFinalEvent = (function () {
@@ -259,19 +278,13 @@ var t396_waitForFinalEvent = (function () {
 	};
 })();
 
-function t396_switchResolution(resolution, resolutionMax) {
+function t396_switchResolution(recid, resolution) {
 	tn_console('func: switchResolution');
+	var artBoardId = 'ab' + recid;
+	var resolutionMax = window.tn[artBoardId].screens[window.tn[artBoardId].screens.length - 1];
 
-	if (typeof resolutionMax === 'undefined') {
-		var breakpoints = [1200, 960, 640, 480, 320];
-		breakpoints.forEach(function (breakpoint, i) {
-			if (+resolution === breakpoint) {
-				resolutionMax = i === 0 ? '' : breakpoints[i - 1];
-			}
-		});
-	}
-	window.tn.curResolution = resolution;
-	window.tn.curResolution_max = resolutionMax;
+	window.tn[artBoardId].curResolution = resolution;
+	window.tn[artBoardId].curResolution_max = resolutionMax;
 }
 
 function t396_artboard_build(data, recid) {
@@ -320,6 +333,9 @@ function t396_artboard_build(data, recid) {
 				break;
 			case 'gallery':
 				t396_addGallery(artBoard, element, recid);
+				break;
+			case 'vector':
+				t396_addVector(artBoard, element);
 				break;
 		}
 	});
@@ -464,6 +480,7 @@ function t396_addImage(artBoard, element) {
 		img.addEventListener('tuwidget_done', function () {
 			t396_elem__renderViewOneField(element, 'top');
 		});
+		t396_changeFilterOnSafari(element, img);
 	});
 }
 
@@ -502,6 +519,55 @@ function t396_addShape(artBoard, element) {
 		atom.style.transform = 'none';
 		element.style.transform = atomsTransform;
 	}
+}
+
+/**
+ * Only for Safari.
+ * Hard change filter value in element.
+ *
+ * @param {HTMLElement} element - .t396__elem
+ * @param {HTMLImageElement} img - .t-img
+ */
+function t396_changeFilterOnSafari(element, img) {
+	if (!/^((?!chrome|android).)*safari/i.test(navigator.userAgent)) return;
+	var backdropFilter = window.getComputedStyle(element).webkitBackdropFilter;
+	if (!backdropFilter || backdropFilter === 'none') return;
+	if ('IntersectionObserver' in window) {
+		var imageObserver = new IntersectionObserver(function (entries, imageObserver) {
+			entries.forEach(function (entry) {
+				if (!entry.isIntersecting) return;
+				var target = entry.target;
+				imageObserver.unobserve(target);
+				target.style.webkitBackdropFilter = 'none';
+				t396_WaitForUploadImg(img, function () {
+					target.style.webkitBackdropFilter = '';
+				});
+			});
+		});
+		imageObserver.observe(element);
+	}
+}
+
+/**
+ * Wait image loading.
+ * Only for Safari via lazy-loading
+ *
+ * @param {HTMLImageElement} img
+ * @param {Function} cb
+ */
+function t396_WaitForUploadImg(img, cb) {
+	if (window.lazy !== 'y') {
+		cb();
+		return;
+	}
+	var timerID = setTimeout(function () {
+		if (img.classList.contains('loaded') && img.clientWidth && img.src) {
+			cb();
+			clearTimeout(timerID);
+		} else {
+			t396_WaitForUploadImg(img, cb);
+		}
+	}, 300);
 }
 
 function t396_addButton(artBoard, element) {
@@ -582,13 +648,10 @@ function t396_addForm(artBoard, element, recid) {
 	element.setAttribute('data-fields', fieldsString);
 
 	/*find forms data for script*/
+	var formElems;
 	var elemid = element.getAttribute('data-elem-id');
-	var formElems = JSON.stringify(window['tn_form__inputsdata__' + recid + '__' + elemid]);
-
-	if (!formElems) {
-		var textarea = element.querySelector('.tn-atom__inputs-textarea');
-		formElems = textarea ? textarea.value : null;
-	}
+	var textarea = element.querySelector('.tn-atom__inputs-textarea');
+	if (textarea) formElems = textarea.value;
 
 	/*continued in the file "tilda-zero-forms-1.0.js"*/
 	t_onFuncLoad('t_zeroForms__init', function () {
@@ -601,7 +664,7 @@ function t396_addForm(artBoard, element, recid) {
 function t396_addGallery(artBoard, element, recid) {
 	element = t396_getEl(element);
 	if (!element) return;
-	tn_console('func: addForm');
+	tn_console('func: addGallery');
 
 	/*add data atributes*/
 	var fieldsString = 'width,height,top,left,';
@@ -619,12 +682,29 @@ function t396_addGallery(artBoard, element, recid) {
 	});
 }
 
+function t396_addVector(artBoard, element) {
+	element = t396_getEl(element);
+	if (!element) return;
+	tn_console('func: addVector');
+
+	/*add data atributes*/
+	var fieldsString = 'width,filewidth,fileheight,top,left,container,axisx,axisy,widthunits,leftunits,topunits';
+	element.setAttribute('data-fields', fieldsString);
+
+	/*render elem view*/
+	t396_elem__renderView(element);
+}
+
+// TODO: удалить функцию-рудимент, которая унаследовалась из редактора)
 // eslint-disable-next-line no-unused-vars
 function t396_elem__setFieldValue(element, prop, val, flag_render, flag_updateui, resolution) {
 	element = t396_getEl(element);
 	if (!element) return;
-	if (!resolution) resolution = window.tn.curResolution;
-	if (+resolution < 1200 && prop !== 'zindex') {
+	var artBoard = element.closest('.t396__artboard');
+	var recid = artBoard.getAttribute('data-artboard-recid');
+	var artBoardId = 'ab' + recid;
+	if (!resolution) resolution = window.tn[artBoardId].curResolution;
+	if (+resolution < window.tn[artBoardId].curResolution_max && prop !== 'zindex') {
 		element.setAttribute('data-field-' + prop + '-res-' + resolution + '-value', val);
 	} else {
 		element.setAttribute('data-field-' + prop + '-value', val);
@@ -638,33 +718,35 @@ function t396_elem__setFieldValue(element, prop, val, flag_render, flag_updateui
 function t396_elem__getFieldValue(element, prop) {
 	element = t396_getEl(element);
 	if (!element) return;
-	if (!window.tn) {
-		window.tn = {};
-		var resolution = t396_detectResolution();
-		t396_switchResolution(resolution);
+
+	var artBoard = element.closest('.t396__artboard');
+	var recid = artBoard.getAttribute('data-artboard-recid');
+	var artBoardId = 'ab' + recid;
+
+	if (window.tn[artBoardId].curResolution === window.tn[artBoardId].curResolution_max) {
+		dataField = element.getAttribute('data-field-' + prop + '-value');
+	} else {
+		dataField = element.getAttribute(
+			'data-field-' + prop + '-res-' + window.tn[artBoardId].curResolution + '-value'
+		);
 	}
-	var resolution = window.tn.curResolution;
-	var breakpoints = [1200, 960, 640, 480, 320];
-	var dataField;
 
-	breakpoints.forEach(function (breakpoint, i) {
-		if (i === 0 && +resolution >= breakpoint) {
-			dataField = element.getAttribute('data-field-' + prop + '-value');
-		}
-		if (i > 0 && +resolution === breakpoint) {
-			dataField = element.getAttribute('data-field-' + prop + '-res-' + breakpoint + '-value');
-			if (i > 1 && !dataField) {
-				var slicedBreakpoints = breakpoints.slice(1, i);
-				for (var n = slicedBreakpoints.length - 1; n >= 0; n--) {
-					dataField = element.getAttribute('data-field-' + prop + '-res-' + slicedBreakpoints[n] + '-value');
-					if (dataField) break;
-				}
+	if (!dataField && dataField !== '') {
+		for (var i = 0; i < window.tn[artBoardId].screens.length; i++) {
+			if (window.tn[artBoardId].screens[i] <= window.tn[artBoardId].curResolution) continue;
+
+			if (window.tn[artBoardId].screens[i] === window.tn[artBoardId].curResolution_max) {
+				dataField = element.getAttribute('data-field-' + prop + '-value');
+			} else {
+				dataField = element.getAttribute(
+					'data-field-' + prop + '-res-' + window.tn[artBoardId].screens[i] + '-value'
+				);
 			}
-			if (!dataField) dataField = element.getAttribute('data-field-' + prop + '-value');
+			if (dataField) break;
 		}
-	});
+	}
 
-	return dataField ? dataField : '';
+	return dataField;
 }
 
 function t396_elem__renderView(element) {
@@ -775,18 +857,11 @@ function t396_elem__renderViewOneField(element, field) {
 			t396_elem__renderViewOneField(element, 'top');
 			break;
 		case 'inputs':
-			var elemid = element.getAttribute('data-elem-id');
-			var recid = element.closest('.t396__artboard').getAttribute('data-artboard-recid');
-			var formElems = JSON.stringify(window['tn_form__inputsdata__' + recid + '__' + elemid]);
-
-			if (!formElems) {
-				var textarea = element.querySelector('.tn-atom__inputs-textarea');
-				formElems = textarea ? textarea.value : null;
-			}
-
+			var textArea = element.querySelector('.tn-atom__inputs-textarea');
+			value = textArea ? textArea.value : '';
 			try {
 				// eslint-disable-next-line no-undef
-				t_zeroForms__renderForm(element, formElems);
+				t_zeroForms__renderForm(element, value);
 				// eslint-disable-next-line no-empty
 			} catch (err) {}
 			break;
@@ -810,6 +885,8 @@ function t396_elem__convertPosition__Local__toAbsolute(element, field, value) {
 	element = t396_getEl(element);
 	if (!element) return;
 	var artBoard = element.closest('.t396__artboard');
+	var recid = artBoard.getAttribute('data-artboard-recid');
+	var artBoardId = 'ab' + recid;
 	var verticalAlignValue = t396_ab__getFieldValue(artBoard, 'valign');
 	var isScaled = t396_ab__getFieldValue(artBoard, 'upscale') === 'window';
 	var allRecords = document.getElementById('allrecords');
@@ -835,8 +912,8 @@ function t396_elem__convertPosition__Local__toAbsolute(element, field, value) {
 	switch (field) {
 		case 'left':
 			elementContainer = container === 'grid' ? 'grid' : 'window';
-			offsetLeft = container === 'grid' ? window.tn.grid_offset_left : 0;
-			elementContainerWidth = container === 'grid' ? window.tn.grid_width : window.tn.window_width;
+			offsetLeft = container === 'grid' ? window.tn[artBoardId].grid_offset_left : 0;
+			elementContainerWidth = container === 'grid' ? window.tn[artBoardId].grid_width : window.tn.window_width;
 
 			/*fluid or not*/
 			var elementLeftUnits = t396_elem__getFieldValue(element, 'leftunits');
@@ -1049,11 +1126,14 @@ function t396_elem_fixLineHeight(element) {
 	if (isSafari && zoom) element.style.zoom = zoom;
 }
 
+// TODO: удалить функцию-рудимент, которая унаследовалась из редактора)
 // eslint-disable-next-line no-unused-vars
 function t396_ab__setFieldValue(artBoard, prop, val, resolution) {
 	/* tn_console('func: ab__setFieldValue '+prop+'='+val);	*/
-	if (!resolution) resolution = window.tn.curResolution;
-	if (resolution < 1200 && artBoard) {
+	var recid = artBoard.getAttribute('data-artboard-recid');
+	var artBoardId = 'ab' + recid;
+	if (!resolution) resolution = window.tn[artBoardId].curResolution;
+	if (resolution < window.tn[artBoardId].curResolution_max && artBoard) {
 		artBoard.setAttribute('data-artboard-' + prop + '-res-' + resolution, val);
 	} else if (artBoard) {
 		artBoard.setAttribute('data-artboard-' + prop, val);
@@ -1061,29 +1141,32 @@ function t396_ab__setFieldValue(artBoard, prop, val, resolution) {
 }
 
 function t396_ab__getFieldValue(artBoard, prop) {
-	if (!artBoard) return;
-	var resolution = window.tn.curResolution;
-	var breakpoints = [1200, 960, 640, 480, 320];
 	var dataField;
+	var recid = artBoard.getAttribute('data-artboard-recid');
+	var artBoardId = 'ab' + recid;
 
-	breakpoints.forEach(function (breakpoint, i) {
-		if (i === 0 && +resolution >= breakpoint) {
-			dataField = artBoard.getAttribute('data-artboard-' + prop);
-		}
-		if (i > 0 && +resolution === breakpoint) {
-			dataField = artBoard.getAttribute('data-artboard-' + prop + '-res-' + breakpoint);
-			if (i > 1 && !dataField) {
-				var slicedBreakpoints = breakpoints.slice(1, i);
-				for (var n = slicedBreakpoints.length - 1; n >= 0; n--) {
-					dataField = artBoard.getAttribute('data-artboard-' + prop + '-res-' + slicedBreakpoints[n]);
-					if (dataField) break;
-				}
+	if (window.tn[artBoardId].curResolution === window.tn[artBoardId].curResolution_max) {
+		dataField = artBoard.getAttribute('data-artboard-' + prop);
+	} else {
+		dataField = artBoard.getAttribute('data-artboard-' + prop + '-res-' + window.tn[artBoardId].curResolution);
+	}
+
+	if (typeof dataField === 'undefined') {
+		for (var i = 0; i < window.tn[artBoardId].screens.length; i++) {
+			if (window.tn[artBoardId].screens[i] <= window.tn[artBoardId].curResolution) continue;
+
+			if (window.tn[artBoardId].screens[i] === window.tn[artBoardId].curResolution_max) {
+				dataField = artBoard.getAttribute('data-artboard-' + prop);
+			} else {
+				dataField = artBoard.getAttribute('data-artboard-' + prop + '-res-' + window.tn[artBoardId].screens[i]);
 			}
-			if (!dataField) dataField = artBoard.getAttribute('data-artboard-' + prop);
+			if (typeof dataField !== 'undefined') {
+				break;
+			}
 		}
-	});
+	}
 
-	return dataField ? dataField : '';
+	return dataField;
 }
 
 function t396_ab__renderViewOneField(artBoard, field) {
@@ -1150,6 +1233,9 @@ function t396_hex2rgb(hexStr) {
 
 function t396_elem__getWidth(element, value) {
 	element = t396_getEl(element);
+	var artBoard = element.closest('.t396__artboard');
+	var recid = artBoard.getAttribute('data-artboard-recid');
+	var artBoardId = 'ab' + recid;
 	if (!value) value = t396_elem__getFieldValue(element, 'width');
 	value = parseFloat(value);
 	var elWidthUnits = t396_elem__getFieldValue(element, 'widthunits');
@@ -1158,7 +1244,7 @@ function t396_elem__getWidth(element, value) {
 		if (elementContainer === 'window') {
 			value = (window.tn.window_width * value) / 100;
 		} else {
-			value = (window.tn.grid_width * value) / 100;
+			value = (window.tn[artBoardId].grid_width * value) / 100;
 		}
 	}
 	return value;
