@@ -28,6 +28,11 @@ function t396_init(recid) {
 	window.addEventListener('resize', function () {
 		tn_console('>>>> t396: Window on Resize event >>>>');
 
+		if (artBoard && artBoard.classList.contains('t396_fullscreenchange')) {
+			artBoard.classList.remove('t396_fullscreenchange');
+			return;
+		}
+
 		t396_waitForFinalEvent(
 			function () {
 				if (window.t396__isMobile || isTouchDevice) {
@@ -79,6 +84,12 @@ function t396_init(recid) {
 			}, 1);
 		}
 	});
+
+	if (artBoard) {
+		artBoard.addEventListener('fullscreenchange', function () {
+			artBoard.classList.add('t396_fullscreenchange');
+		});
+	}
 
 	// recalc zero params, if page has ME901 with padding at axisX
 	if (document.querySelector('.t830')) {
@@ -134,6 +145,15 @@ function t396_init(recid) {
 		t_onFuncLoad('t396_scaleBlock', function () {
 			t396_scaleBlock(recid);
 		});
+	}
+
+	// TODO temporary fix for cases which elements inside zero
+	// has zIndex that is larger than editor mode UI elements
+	if (isTildaModeEdit && zeroBlock && artBoard) {
+		var artBoardOverflow = artBoard.getAttribute('data-artboard-ovrflw');
+		zeroBlock.style.position = 'relative';
+		// set higher priority of visibility to artboard with overflow auto/visible
+		zeroBlock.style.zIndex = artBoardOverflow === 'auto' || artBoardOverflow === 'visible' ? '2' : '1';
 	}
 }
 
@@ -200,9 +220,13 @@ function t396_detectResolution(recid) {
 function t396_initTNobj(recid, artBoard) {
 	if (!artBoard) return;
 	tn_console('func: initTNobj');
-	var artBoardId = 'ab' + recid;
 
 	/* Заводим глобальный объект и добавляем туда общие данные */
+	if (typeof window.tn !== 'undefined') {
+		t396_setScreensTNobj(recid, artBoard);
+		return;
+	}
+
 	window.tn = {};
 	window.tn.ab_fields = [
 		'height',
@@ -218,6 +242,12 @@ function t396_initTNobj(recid, artBoard) {
 		'height_vh',
 		'valign',
 	];
+
+	t396_setScreensTNobj(recid, artBoard);
+}
+
+function t396_setScreensTNobj(recid, artBoard) {
+	var artBoardId = 'ab' + recid;
 
 	/* Заводим для конкретного artboard свой объект и записываем туда уникальные данные */
 	window.tn[artBoardId] = {};
@@ -506,8 +536,13 @@ function t396_addShape(artBoard, element) {
 		/* check for safari */
 		(window.getComputedStyle(element).webkitBackdropFilter &&
 			window.getComputedStyle(element).webkitBackdropFilter !== 'none');
-	// prettier-ignore
-	var atomsTransform = atom && window.getComputedStyle(atom).transform.substring(0, 6) === 'matrix' ? window.getComputedStyle(atom).transform : null;
+
+	var atomsTransform;
+	var atomComputedStyle = window.getComputedStyle(atom);
+	if (atom && atomComputedStyle && atomComputedStyle.transform) {
+		// prettier-ignore
+		atomsTransform = atomComputedStyle.transform.substring(0, 6) === 'matrix' ? atomComputedStyle.transform : null;
+	}
 
 	/*
 	matrix(0.707107, 0.707107, -0.707107, 0.707107, 0, 0) === rotate(45deg)
@@ -1141,6 +1176,8 @@ function t396_ab__setFieldValue(artBoard, prop, val, resolution) {
 }
 
 function t396_ab__getFieldValue(artBoard, prop) {
+	if (!artBoard) return;
+
 	var dataField;
 	var recid = artBoard.getAttribute('data-artboard-recid');
 	var artBoardId = 'ab' + recid;
