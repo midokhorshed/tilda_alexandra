@@ -20,7 +20,7 @@
 
 function t396_scaleBlock(recid) {
 	var isOnlyScalable = t396_isOnlyScalableBrowser();
-	var resolution = t396_detectResolution();
+	var resolution = t396_detectResolution(recid);
 	var record = document.getElementById('rec' + recid);
 	var elements = record ? record.querySelectorAll('.t396__elem') : [];
 	var artBoard = record ? record.querySelector('.t396__artboard') : null;
