@@ -1188,7 +1188,7 @@ function t396_ab__getFieldValue(artBoard, prop) {
 		dataField = artBoard.getAttribute('data-artboard-' + prop + '-res-' + window.tn[artBoardId].curResolution);
 	}
 
-	if (typeof dataField === 'undefined') {
+	if (!dataField && dataField !== '') {
 		for (var i = 0; i < window.tn[artBoardId].screens.length; i++) {
 			if (window.tn[artBoardId].screens[i] <= window.tn[artBoardId].curResolution) continue;
 
@@ -1197,9 +1197,7 @@ function t396_ab__getFieldValue(artBoard, prop) {
 			} else {
 				dataField = artBoard.getAttribute('data-artboard-' + prop + '-res-' + window.tn[artBoardId].screens[i]);
 			}
-			if (typeof dataField !== 'undefined') {
-				break;
-			}
+			if (dataField) break;
 		}
 	}
 
