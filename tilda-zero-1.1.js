@@ -206,6 +206,8 @@ function t396_doResize(recid) {
 }
 
 function t396_detectResolution(recid) {
+	if (!recid) return;
+
 	var artBoardId = 'ab' + recid;
 	var windowWidth = window.t396__isMobile ? document.documentElement.clientWidth : window.innerWidth;
 	var resolution;
@@ -221,12 +223,14 @@ function t396_initTNobj(recid, artBoard) {
 	if (!artBoard) return;
 	tn_console('func: initTNobj');
 
-	/* Заводим глобальный объект и добавляем туда общие данные */
+	// Если объект уже существует, чтобы не перезатереть данные,
+	// записываем объект второго уровня для конкретного блока и выходим
 	if (typeof window.tn !== 'undefined') {
 		t396_setScreensTNobj(recid, artBoard);
 		return;
 	}
 
+	// Если объект ещё не существует, создаём его
 	window.tn = {};
 	window.tn.ab_fields = [
 		'height',
@@ -315,6 +319,11 @@ function t396_switchResolution(recid, resolution) {
 
 	window.tn[artBoardId].curResolution = resolution;
 	window.tn[artBoardId].curResolution_max = resolutionMax;
+
+	// Данное свойство необходимо на тот случай, если скрипт zero
+	// обновился, а второстепенные скрипты (например, zero-forms -- нет)
+	window.tn.curResolution = resolution;
+	window.tn.curResolution_max = resolutionMax;
 }
 
 function t396_artboard_build(data, recid) {
