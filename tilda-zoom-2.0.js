@@ -13,6 +13,9 @@
  */
 // global variables declaration
 window.t_zoom__isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+// some iPads contains Macintosh user agent
+if (!window.t_zoom__isMobile)
+	window.t_zoom__isMobile = navigator.userAgent.indexOf('Macintosh') && 'ontouchend' in document;
 window.t_zoom__isiOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 window.t_zoom__iOSMajorVersion = 0;
@@ -39,8 +42,15 @@ function t_initZoom() {
 	window.isDoubletapScaleAdded = false;
 
 	//prettier-ignore
-	var zoomableElmnts = document.querySelectorAll('[data-zoomable="yes"]:not(.t-slds__thumbs_gallery):not([data-img-zoom-url=""])');
-	Array.prototype.forEach.call(zoomableElmnts, function (zoomableEl) {
+	var zoomableElements = document.querySelectorAll('[data-zoomable]');
+	var zoomableElementsNotEmpty = Array.prototype.slice.call(zoomableElements).filter(function (el) {
+		return (
+			el.getAttribute('data-zoomable') === 'yes' &&
+			!el.classList.contains('t-slds__thumbs_gallery') &&
+			el.getAttribute('data-img-zoom-url') !== ''
+		);
+	});
+	Array.prototype.forEach.call(zoomableElementsNotEmpty, function (zoomableEl) {
 		zoomableEl.classList.add('t-zoomable');
 	});
 
@@ -59,7 +69,9 @@ function t_initZoom() {
 	zoomWrapper.appendChild(zoomBG);
 	zoomWrapper.appendChild(zoomCloseBtn);
 	zoomWrapper.appendChild(scaleBtn);
-	document.body.insertAdjacentElement('beforeend', zoomWrapper);
+	if (document.body && typeof document.body === 'object') {
+		document.body.insertAdjacentElement('beforeend', zoomWrapper);
+	}
 
 	t_zoom__initFullScreenImgOnClick();
 	t_zoom__closeAndSlideCarousel();
@@ -218,7 +230,7 @@ function t_zoomHandler(targetElement) {
 	t_zoom__initSingleZoom();
 	t_zoom_checkForScale();
 	t_zoom_lockScroll();
-	if (window.t_zoom__isMobile || 'ontouchend' in document) {
+	if (window.t_zoom__isMobile) {
 		t_zoom_initSwipe();
 		t_zoom_initCloseSwipe();
 	}
@@ -365,6 +377,28 @@ function t_zoom__initEventsonMobile() {
 	modalEvents.forEach(function (event) {
 		modal.addEventListener(event, t_zoom_setHideControlsTimer);
 	});
+	window.addEventListener('orientationchange', t_zoom__updateSlidesHeight);
+}
+
+function t_zoom__updateSlidesHeight() {
+	var slideImageList = document.querySelectorAll('.t-carousel__zoomer__item .t-carousel__zoomer__img');
+	var modal = document.querySelector('.t-zoomer__wrapper');
+	if (!modal || !slideImageList.length) return;
+	var commentHeight = modal.getAttribute('data-max-comment-height');
+	commentHeight = parseInt(commentHeight, 10);
+	if (isNaN(commentHeight)) return;
+
+	// wait for orientationchange event will be ended
+	setTimeout(function () {
+		var zoomedItem = document.querySelector('.t-carousel__zoomer__item.active');
+		if (!zoomedItem) return;
+		var imageBordersWidth = modal.offsetHeight - zoomedItem.offsetHeight;
+		var imagePadding = imageBordersWidth + commentHeight;
+		var imageHeight = document.documentElement.clientHeight - imagePadding;
+		Array.prototype.forEach.call(slideImageList, function (slideImg) {
+			slideImg.style.maxHeight = imageHeight + 'px';
+		});
+	}, 300);
 }
 
 /**
@@ -481,8 +515,7 @@ function t_zoom__addingImgsIntoCarousel(targetElement) {
 		if (isLazy) {
 			slideIMG.classList.add('t-img');
 			slideIMG.setAttribute('data-original', imgURLs);
-			// to smooth sliding between first and last slide, set src with original image
-			if (i === 0 || i === images.length - 1) slideIMG.src = imgURLs;
+			if (i === 0 || i === images.length - 1) slideIMG.setAttribute('data-lazy-rule', 'skip');
 		} else {
 			slideIMG.src = imgURLs;
 		}
@@ -515,16 +548,19 @@ function t_zoom__createAndLoopSlider(targetElement) {
 		var imageBordersWidth = modal.offsetHeight - slideItems[0].offsetHeight;
 
 		// get max height of comments in all slides to set this height for all of them, for set an even grid of slider
-		var maxHeightOfComments = Array.prototype.reduce.call(
-			slideItems,
-			function (prev, slide) {
-				var comment = slide.querySelector('.t-zoomer__comments');
-				var commentHeight = comment ? comment.offsetHeight : 0;
-				if (commentHeight > prev) prev = commentHeight;
-				return prev;
-			},
-			0
-		);
+		if (window.t_zoom__isMobile) {
+			var maxHeightOfComments = Array.prototype.reduce.call(
+				slideItems,
+				function (prev, slide) {
+					var comment = slide.querySelector('.t-zoomer__comments');
+					var commentHeight = comment ? comment.offsetHeight : 0;
+					if (commentHeight > prev) prev = commentHeight;
+					return prev;
+				},
+				0
+			);
+			modal.setAttribute('data-max-comment-height', maxHeightOfComments);
+		}
 
 		var isLazy = window.lazy === 'y';
 		Array.prototype.forEach.call(slideItems, function (slideItem) {
@@ -533,12 +569,11 @@ function t_zoom__createAndLoopSlider(targetElement) {
 			var imageSrc = image.getAttribute(attributeName);
 			var comment = slideItem.querySelector('.t-zoomer__comments');
 			var commentHeight = comment ? comment.offsetHeight : 0;
-			if (window.t_zoom__isMobile) {
-				commentHeight = maxHeightOfComments;
-			}
+			if (window.t_zoom__isMobile) commentHeight = maxHeightOfComments;
+			var imagePadding = imageBordersWidth + commentHeight;
 
 			if (comment) comment.style.height = commentHeight + 'px';
-			image.style.maxHeight = document.documentElement.clientHeight - (commentHeight + imageBordersWidth) + 'px';
+			image.style.maxHeight = document.documentElement.clientHeight - imagePadding + 'px';
 
 			if (imageSrc && imageSrc.indexOf('.svg') !== -1) {
 				image.style.width = window.innerWidth + 'px';
@@ -680,6 +715,7 @@ function t_zoom_loopSlider() {
 	var lastSlideCopy = sliderItems[sliderItems.length - 1].cloneNode(true);
 	firstSlideCopy.classList.remove('active');
 	lastSlideCopy.classList.remove('active');
+	t_zoom__updateClonedImgSrc(sliderItems[0], sliderItems[sliderItems.length - 1], firstSlideCopy, lastSlideCopy);
 
 	sliderTrack.insertBefore(lastSlideCopy, sliderTrack.firstChild);
 	sliderTrack.appendChild(firstSlideCopy);
@@ -705,6 +741,35 @@ function t_zoom_loopSlider() {
 				t_zoom_transitForLoop('end');
 			}
 			sliderTrack.setAttribute('data-on-transition', '');
+		});
+	});
+}
+
+function t_zoom__updateClonedImgSrc(firstSlide, lastSlide, firstSlideClone, lastSlideClone) {
+	if (window.lazy !== 'y') return;
+	var firstSlideIMG = firstSlide.querySelector('img');
+	var lastSlideIMG = lastSlide.querySelector('img');
+	var firstSlideCloneIMG = firstSlideClone.querySelector('img');
+	var lastSlideCloneIMG = lastSlideClone.querySelector('img');
+	var listOfClonedEls = [firstSlideIMG, lastSlideIMG, firstSlideCloneIMG, lastSlideCloneIMG];
+	//prettier-ignore
+	if (listOfClonedEls.some(function (el) {return !el;})) return;
+	if (!('MutationObserver' in window)) return;
+	var mutationObserver = new MutationObserver(function (mutations) {
+		mutations.forEach(function (mutation) {
+			if (mutation.type === 'attributes' && mutation.attributeName === 'src') {
+				var updatedEl;
+				if (mutation.target === firstSlideIMG) updatedEl = firstSlideCloneIMG;
+				if (mutation.target === lastSlideIMG) updatedEl = lastSlideCloneIMG;
+				if (mutation.target === firstSlideCloneIMG) updatedEl = firstSlideIMG;
+				if (mutation.target === lastSlideCloneIMG) updatedEl = lastSlideIMG;
+				if (mutation.target.src && !updatedEl.src) updatedEl.src = mutation.target.src;
+			}
+		});
+	});
+	listOfClonedEls.forEach(function (el) {
+		mutationObserver.observe(el, {
+			attributes: true,
 		});
 	});
 }
@@ -831,6 +896,7 @@ function t_zoom__waitImgForScale(zoomedImage, timer, callback) {
 			t_zoom__waitImgForScale(zoomedImage, timer, callback);
 		}, 500);
 	} else {
+		// eslint-disable-next-line no-console
 		console.warn(
 			"zoomed image isn't complete, natural width: " +
 				zoomedImage.naturalWidth +
@@ -859,7 +925,7 @@ function t_zoom_checkToScaleInit(zoomedImage) {
 		t_zoom_fetchSVG(zoomedImage, windowHeight, windowWidth);
 	} else if (windowHeight < zoomedImage.naturalHeight || windowWidth < zoomedImage.naturalWidth) {
 		//prettier-ignore
-		if (!window.isDoubletapScaleAdded && (window.t_zoom__isMobile || 'ontouchend' in document)) t_zoom_doubletapScaleInit();
+		if (!window.isDoubletapScaleAdded && window.t_zoom__isMobile) t_zoom_doubletapScaleInit();
 		t_zoom_scale_init();
 	} else {
 		document.querySelector('.t-zoomer__scale').style.display = '';
@@ -891,8 +957,7 @@ function t_zoom_fetchSVG(zoomedImage, windowHeight, windowWidth) {
 			zoomedImage.style.height = parsedSVG.getBBox().height + 'px';
 
 			if (windowHeight < parsedSVG.getBBox().height || windowWidth < parsedSVG.getBBox().width) {
-				if (!window.isDoubletapScaleAdded && (window.t_zoom__isMobile || 'ontouchend' in document))
-					t_zoom_doubletapScaleInit();
+				if (!window.isDoubletapScaleAdded && window.t_zoom__isMobile) t_zoom_doubletapScaleInit();
 				t_zoom_scale_init();
 			} else {
 				document.querySelector('.t-zoomer__scale').style.display = '';
@@ -1163,6 +1228,7 @@ function t_zoom_close() {
 		document.body.classList.remove('t-zoomer__active');
 	}, 200);
 	t_zoom_unlockScroll();
+	window.removeEventListener('orientationchange', t_zoom__updateSlidesHeight);
 }
 
 /**
@@ -1186,14 +1252,18 @@ function t_zoom_unscale() {
 
 		if (modal) {
 			var imageBordersWidth = modal.offsetHeight - zoomedItem.offsetHeight;
-			var height = comment ? comment.offsetHeight : 0;
+			var commentHeight = comment ? comment.offsetHeight : 0;
+			if (window.t_zoom__isMobile) {
+				commentHeight = modal.getAttribute('data-max-comment-height') || commentHeight;
+			}
+			var imagePadding = imageBordersWidth + commentHeight;
 
 			image.onmousemove = null;
 			image.ontouchmove = null;
 			image.style.transform = '';
 			image.style.left = '';
 			image.style.top = '';
-			image.style.maxHeight = 'calc(100vh - ' + (imageBordersWidth + height) + 'px)';
+			image.style.maxHeight = document.documentElement.clientHeight - imagePadding + 'px';
 		}
 	}
 
@@ -1240,6 +1310,9 @@ function t_zoom_unlockScroll() {
 	}
 }
 
+/**
+ * update active slider position in carousel wrapper line after resize/orientationchange
+ */
 function t_zoom_initResizeListener() {
 	var debouncedResizeHandler = t_throttle(function () {
 		t_zoom_resizeHandler();
