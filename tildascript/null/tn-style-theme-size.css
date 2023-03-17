@@ -1,0 +1,264 @@
+.tn-theme-minimal {
+}
+
+.tn-theme-minimal .tn-mainmenu {
+	height: 46px;
+}
+
+.tn-theme-minimal .tn-mainmenu__table {
+	height: 46px;
+}
+
+.tn-theme-minimal .tn-add-btn {
+	width: 32px;
+	height: 32px;
+	top: -16px;
+	left: 6px;
+}
+
+.tn-theme-minimal .tn-add-btn__icon {
+	width: 32px;
+	height: 32px;
+	background-position: -3px -3px;
+	background-size: 122%;
+}
+
+.tn-theme-minimal .tn-save-btn {
+	height: 32px;
+	border-radius: 50px;
+	width: 70px;
+}
+
+.tn-theme-minimal .tn-save-btn__icon,
+.tn-theme-minimal .tn-import-btn__icon {
+	line-height: 32px;
+}
+
+.tn-theme-minimal .tn-close-btn {
+	width: 70px;
+}
+
+.tn-theme-minimal .tn-close-btn,
+.tn-theme-minimal .tn-help-btn,
+.tn-theme-minimal .tn-more-btn {
+	height: 32px;
+	border-radius: 50px;
+}
+
+.tn-theme-minimal .tn-close-btn__icon {
+	line-height: 32px;
+}
+
+.tn-theme-minimal .tn-more-btn {
+	margin-right: 6px;
+}
+
+.tn-theme-minimal .tn-res-wrapper {
+	top: 6px;
+	transform: scale(0.82) translateX(-64%);
+}
+
+.tn-theme-minimal .tn-res-1200 img {
+	transform: scale(0.95);
+	transform: translate(-3px, 0);
+}
+
+.tn-theme-minimal .tn-screens-settings {
+	top: 54px;
+}
+
+.tn-theme-minimal .tn-right-box {
+	top: 52px;
+	height: calc(100vh - 60px);
+	right: 6px;
+	width: 290px;
+}
+
+.tn-theme-minimal .tn-right-box__header {
+	height: 34px;
+	line-height: 34px;
+	padding-right: 14px;
+}
+
+.tn-theme-minimal .tn-right-box__icon {
+	margin-top: 10px;
+}
+
+.tn-theme-minimal .tn-left-box {
+	top: 52px;
+	height: calc(100vh - 60px);
+	left: 6px;
+}
+
+.tn-theme-minimal .tn-left-box__header {
+	height: 34px;
+	line-height: 34px;
+}
+
+.tn-theme-minimal .tn-left-box__icon {
+	margin-top: 10px;
+}
+
+.tn-theme-minimal .sui-panel__section {
+	padding: 10px 12px;
+	margin: 0px 4px 4px 4px;
+}
+
+.tn-theme-minimal .sui-panel__padd_b-10 {
+	padding-bottom: 6px;
+}
+
+.tn-theme-minimal .sui-label {
+	font-size: 11px;
+	opacity: 0.5;
+	margin-top: 0;
+	font-weight: 500;
+	margin-bottom: 4px;
+}
+
+.tn-theme-minimal .sui-form-group .ui-button {
+	height: 24px;
+	padding-top: 0;
+	font-size: 15px;
+}
+
+.tn-theme-minimal .sui-input {
+	font-size: 15px;
+	font-weight: 400;
+	font-family: 'tfutura', arial, sans-serif;
+	height: 28px;
+}
+
+.tn-theme-minimal .sui-label-ask {
+	opacity: 0.4;
+}
+
+.tn-theme-minimal .sui-input-div_placeholder-color input {
+	height: 44px;
+}
+
+.tn-theme-minimal .sui-form-group .minicolors-theme-default .minicolors-input,
+.tn-theme-minimal .sui-input-div_placeholder-color .sui-input {
+	padding-left: 40px;
+}
+
+.tn-theme-minimal .sui-select:after {
+	transform: scale(0.75);
+}
+
+.tn-theme-minimal .minicolors-swatch,
+.tn-theme-minimal .sui-input-div_placeholder-color:before {
+	transform: scale(0.92);
+	cursor: pointer;
+}
+
+.tn-theme-minimal .tn-canvas-min {
+	box-shadow: 0px 0px 15px 1px rgb(0 0 0 / 5%);
+}
+
+.tn-theme-minimal .tn-right-box__caption {
+	font-size: 10px;
+}
+
+.tn-theme-minimal .sui-control-slider .sui-label {
+	/* margin-bottom: -2px; */
+}
+
+.tn-theme-minimal .sui-label_title {
+	margin-bottom: 15px;
+	margin-top: 8px;
+}
+
+.tn-theme-minimal .sui-panel__section_closed .sui-label_title {
+	margin-bottom: 4px;
+}
+
+.tn-theme-minimal .sui-input-upload-div {
+	margin-top: -6px;
+}
+
+.tn-theme-minimal .tn-right-box__icon,
+.tn-theme-minimal .tn-left-box__icon {
+	opacity: 0;
+}
+
+.tn-theme-minimal .tn-right-box:hover .tn-right-box__icon,
+.tn-theme-minimal .tn-left-box:hover .tn-left-box__icon {
+	opacity: 0.95;
+	transition: opacity 0.3s ease-in-out;
+	transition-delay: 1s;
+}
+
+.tn-theme-minimal .sui-toggle {
+	height: 18px;
+}
+
+.tn-theme-minimal .sui-form-group .ui-button {
+	width: 81px;
+}
+
+.tn-theme-minimal .sui-form-group-pos-twocoldiv {
+	width: 82px;
+}
+
+.tn-theme-minimal .sui-btn_sm {
+	font-size: 13px;
+	margin-right: 3px;
+	padding: 4px 11px;
+}
+
+.tn-theme-minimal .sui-btn-ico.sui-btn-ico_elems {
+	padding-left: 6px;
+	padding-right: 6px;
+}
+
+.tn-theme-minimal .sui-btn-group {
+	width: 137px;
+}
+
+.tn-theme-minimal .tn-add-popup {
+	width: 130px;
+}
+
+.tn-theme-minimal .tn-add-popup__item {
+	font-size: 14px;
+	height: 35px;
+	line-height: 35px;
+}
+
+.tn-theme-minimal .sui-form-group-td-minwidth-60 {
+	min-width: 44px;
+}
+
+.tn-theme-minimal .sui-imagesearch-btn {
+	left: 226px;
+}
+
+.tn-theme-minimal .sui-panel__section-pos .sui-label {
+	width: 15px;
+}
+
+.tn-theme-minimal .tn-sett-btn {
+	height: 38px;
+}
+.tn-theme-minimal .tn-sett-btn__icon {
+	line-height: 36px;
+}
+
+.tn-theme-minimal .sui-form-group-align__table {
+	padding-bottom: 0;
+}
+
+.tn-theme-minimal .sui-table-align-eachother {
+	margin-left: -5px;
+	margin-top: 5px;
+}
+
+.tn-theme-minimal .tn-zoom-wrapper {
+	transform: scale(0.9);
+	top: 4px;
+}
+
+.tn-theme-minimal .sui-label-ask {
+	transform: scale(0.9);
+}

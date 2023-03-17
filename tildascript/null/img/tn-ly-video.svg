@@ -1,0 +1,13 @@
+<svg width="18" height="18" viewBox="0 0 18 18" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="Canvas" fill="none">
+<g id="Group 2.2">
+<g id="Rectangle">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M 1.20711 0.5L 3.85175 3.14464L 6.49639 5.78929L 6.49639 0.5L 1.20711 0.5Z" stroke-miterlimit="8" transform="matrix(0.707107 0.707107 -0.707107 0.707107 7.5 4)" stroke="black"/>
+</g>
+<g id="Ellipse">
+<circle cx="9" cy="9" r="8.5" stroke="black"/>
+</g>
+</g>
+</g>
+</svg>
+
