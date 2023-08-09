@@ -36,7 +36,11 @@ function tp__convertRecordtoZero_do(recordid) {
 			if (data == '' || data == 'OK') {
 				edrec__closeEditForm();
 				var rec = document.querySelector('#record' + recordid);
-				edrec__scrollTo(document.querySelector('html'), rec.offsetTop - 100, 700);
+				// record обновляется в процессе скролла, из-за этого дергается. как вариант, можно вызывать update после завершения скролла
+				// tp__scrollToEl(rec.getBoundingClientRect().top + window.pageYOffset - 100, 700, function() {
+				// 	tp__updateRecord(recordid);
+				// });
+				tp__scrollToEl(rec.getBoundingClientRect().top + window.pageYOffset - 100, 700);
 				tp__updateRecord(recordid);
 			} else {
 				check_logout(data);
@@ -49,7 +53,7 @@ function tp__convertRecordtoZero_do(recordid) {
 			hideLoadIcon();
 			location.reload();
 		},
-		timeout: 1000 * 25,
+		timeout: 1000*25
 	});
 }
 
@@ -101,7 +105,7 @@ function tp__closeZero(recordid, pageid) {
 		var rec = document.querySelector('#record' + recordid);
 		var offset = rec.getBoundingClientRect().top + window.pageYOffset;
 		if (offset) {
-			edrec__scrollTo(document.querySelector('html'), offset - 100, 700);
+			tp__scrollToEl(offset - 100, 700);
 		}
 	}
 	if (window.history.replaceState) {
@@ -120,3 +124,27 @@ window.onpopstate = function (e) {
 		tp__openZero(e.state.recordid, 'replacestate');
 	}
 };
+
+function tp__scrollToEl(pos, time, complete) {
+    var currentPos = window.pageYOffset;
+    var start = null;
+    if (time == null) time = 500;
+    pos = +pos, time = +time;
+    window.requestAnimationFrame(function step(currentTime) {
+        start = !start ? currentTime : start;
+        var progress = currentTime - start;
+        if (currentPos < pos) {
+            window.scroll(0, ((pos - currentPos) * progress / time) + currentPos);
+        } else {
+            window.scroll(0, currentPos - ((currentPos - pos) * progress / time));
+        }
+        if (progress < time) {
+            window.requestAnimationFrame(step);
+        } else {
+            window.scroll(0, pos);
+			if (typeof complete === 'function') {
+				complete();
+			}
+        }
+    });
+}
