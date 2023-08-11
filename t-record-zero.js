@@ -37,7 +37,7 @@ function tp__convertRecordtoZero_do(recordid) {
 				edrec__closeEditForm();
 				var rec = document.querySelector('#record' + recordid);
 				// record обновляется в процессе скролла, из-за этого дергается. как вариант, можно вызывать update после завершения скролла
-				// tp__scrollToEl(rec.getBoundingClientRect().top + window.pageYOffset - 100, 700, function() {
+				// tp__scrollToEl(rec.getBoundingClientRect().top + window.pageYOffset - 100, 1700, function() {
 				// 	tp__updateRecord(recordid);
 				// });
 				tp__scrollToEl(rec.getBoundingClientRect().top + window.pageYOffset - 100, 700);
@@ -90,9 +90,7 @@ function tp__closeZero(recordid, pageid) {
 	}
 	console.log('func: tn_close. rec:' + recordid);
 	var zeroIframe = document.querySelector('.t396__iframe');
-	if (zeroIframe && zeroIframe.parentNode !== null) {
-		zeroIframe.parentNode.removeChild(zeroIframe);
-	}
+	if (zeroIframe) zeroIframe.remove();
 	var body = document.body;
 	body.classList.remove('t396__body_overflow_hidden');
 	body.removeAttribute('data-zero-opened-recordid');
@@ -116,11 +114,14 @@ function tp__closeZero(recordid, pageid) {
 }
 
 window.onpopstate = function (e) {
+	console.log(e.state);
 	if (typeof e.state == 'undefined' || e.state === null) {
 		if (document.body.classList.contains('t396__body_overflow_hidden')) {
+			console.log('close');
 			tp__closeZero();
 		}
 	} else if (typeof e.state.module != 'undefined' && e.state.module == 'zero') {
+		console.log('open');
 		tp__openZero(e.state.recordid, 'replacestate');
 	}
 };
